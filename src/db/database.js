@@ -1,0 +1,153 @@
+// ---------------------------------------------------------------------------
+// Offline database layer (expo-sqlite, next-gen async API).
+//
+// SQLite lives entirely on the device, so EVERYTHING here works with zero WiFi.
+// This is your offline-first foundation and the source of truth in Phase 1.
+//
+// We split content from progress on purpose:
+//   - `cards`      = static vocab content (seeded once, you trust it)
+//   - `card_state` = the user's SRS progress per card (box + last review)
+//   - `daily_log`  = which study blocks were done each day
+// Keeping them separate means you can update/expand content later WITHOUT
+// wiping someone's progress.
+// ---------------------------------------------------------------------------
+
+import * as SQLite from "expo-sqlite";
+import { SEED_DECK } from "../data/seedDeck";
+import { isDue, nextBox } from "../lib/srs";
+
+let db = null; // singleton connection
+
+export async function initDatabase() {
+  if (db) return db;
+  db = await SQLite.openDatabaseAsync("thai.db");
+
+  // WAL mode = better concurrent read/write performance on device.
+  await db.execAsync(`
+    PRAGMA journal_mode = WAL;
+
+    CREATE TABLE IF NOT EXISTS cards (
+      id TEXT PRIMARY KEY NOT NULL,
+      thai TEXT NOT NULL,
+      roman TEXT,
+      en TEXT,
+      note TEXT,
+      category TEXT,
+      sort INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS card_state (
+      card_id TEXT PRIMARY KEY NOT NULL,
+      box INTEGER NOT NULL DEFAULT 1,
+      last_reviewed TEXT,
+      FOREIGN KEY (card_id) REFERENCES cards(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS daily_log (
+      date TEXT PRIMARY KEY NOT NULL,
+      listening INTEGER NOT NULL DEFAULT 0,
+      speaking INTEGER NOT NULL DEFAULT 0,
+      vocab INTEGER NOT NULL DEFAULT 0,
+      freeplay INTEGER NOT NULL DEFAULT 0
+    );
+  `);
+
+  await seedIfEmpty();
+  return db;
+}
+
+async function seedIfEmpty() {
+  const row = await db.getFirstAsync("SELECT COUNT(*) AS n FROM cards");
+  if (row && row.n > 0) return; // already seeded, leave progress alone
+
+  // Insert all cards + a fresh box-1 state for each, in a single transaction.
+  await db.withTransactionAsync(async () => {
+    for (const c of SEED_DECK) {
+      await db.runAsync(
+        "INSERT INTO cards (id, thai, roman, en, note, category, sort) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [c.id, c.thai, c.roman, c.en, c.note || "", c.category || "", c.sort]
+      );
+      await db.runAsync(
+        "INSERT INTO card_state (card_id, box, last_reviewed) VALUES (?, 1, NULL)",
+        [c.id]
+      );
+    }
+  });
+}
+
+// --- Deck queries ----------------------------------------------------------
+
+// Full deck joined with progress, in display order.
+export async function getDeck() {
+  return db.getAllAsync(`
+    SELECT c.id, c.thai, c.roman, c.en, c.note, c.category,
+           s.box, s.last_reviewed
+    FROM cards c
+    JOIN card_state s ON s.card_id = c.id
+    ORDER BY c.sort
+  `);
+}
+
+// Cards due for review today (filtered with the SRS rule in JS).
+export async function getDueCards(today) {
+  const deck = await getDeck();
+  return deck.filter((card) => isDue(card, today));
+}
+
+// Grade a card: move it up or back, stamp today's date.
+export async function recordReview(cardId, currentBox, correct, today) {
+  const box = nextBox(currentBox, correct);
+  await db.runAsync(
+    "UPDATE card_state SET box = ?, last_reviewed = ? WHERE card_id = ?",
+    [box, today, cardId]
+  );
+  return box;
+}
+
+export async function countMastered() {
+  const row = await db.getFirstAsync(
+    "SELECT COUNT(*) AS n FROM card_state WHERE box >= 5"
+  );
+  return row ? row.n : 0;
+}
+
+// --- Daily log queries -----------------------------------------------------
+
+const BLANK_LOG = { listening: false, speaking: false, vocab: false, freeplay: false };
+
+export async function getLog(date) {
+  const row = await db.getFirstAsync("SELECT * FROM daily_log WHERE date = ?", [date]);
+  if (!row) return { ...BLANK_LOG };
+  return {
+    listening: !!row.listening,
+    speaking: !!row.speaking,
+    vocab: !!row.vocab,
+    freeplay: !!row.freeplay,
+  };
+}
+
+// Set a single block on/off for a date (upsert the whole row).
+export async function setBlock(date, key, value) {
+  const current = await getLog(date);
+  current[key] = value;
+  await db.runAsync(
+    `INSERT INTO daily_log (date, listening, speaking, vocab, freeplay)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(date) DO UPDATE SET
+       listening = excluded.listening,
+       speaking  = excluded.speaking,
+       vocab     = excluded.vocab,
+       freeplay  = excluded.freeplay`,
+    [date, +current.listening, +current.speaking, +current.vocab, +current.freeplay]
+  );
+  return current;
+}
+
+// All logged dates that completed the protected Listening block.
+// Used to compute the streak in JS.
+export async function getListeningDates() {
+  const rows = await db.getAllAsync(
+    "SELECT date FROM daily_log WHERE listening = 1"
+  );
+  return rows.map((r) => r.date);
+}
