@@ -31,19 +31,39 @@ src/
   db/database.js            SQLite schema, seeding, all queries (offline)
   lib/
     dates.js                Local-time date helpers (no UTC bugs)
+    dates.test.js           Unit tests for the date math
     srs.js                  Leitner box logic (pure functions)
+    srs.test.js             Unit tests for due-date + box promotion logic
     tts.js                  expo-speech wrapper (Thai pronunciation playback)
     supabaseSync.js         STUB for Phase 2 cloud backup (RLS schema in comments)
   components/
-    TodayScreen.js          Streak, daily blocks, due-review nudge
+    TodayScreen.js          Streak, daily blocks, due-review nudge, voice hint
     ReviewScreen.js         SRS flashcard flip + grading + speak button
 ```
+
+## Development
+
+```bash
+npm test            # run the unit tests (dates + SRS logic)
+npm run lint        # eslint (Expo config + Prettier-aware)
+npm run format      # auto-format with Prettier
+npm run format:check # verify formatting in CI
+```
+
+Pure logic (`dates.js`, `srs.js`) is unit-tested. Formatting is owned by
+Prettier; the `seedDeck` table is intentionally `prettier-ignore`d so it stays
+a scannable one-card-per-line layout.
 
 ## Key design decisions (the "why")
 
 - **Content and progress are separate tables.** `cards` is static, trusted vocab.
-  `card_state` / `daily_log` is your progress. You can expand or fix content later
-  without wiping anyone's streak or SRS history.
+  `card_state` / `daily_log` is your progress. On every launch the deck content is
+  re-synced (UPSERT) from `seedDeck.js` while progress rows are left untouched
+  (`INSERT OR IGNORE`), so vocab fixes and new cards reach existing users without
+  wiping anyone's streak or SRS history. Schema changes go through versioned
+  migrations gated on SQLite's `user_version`.
+- **The app never dead-ends on a bad DB.** If init/migration throws, you get a
+  recovery screen (retry, or reset-and-reseed) instead of a frozen spinner.
 - **SQLite is the source of truth.** The app never blocks on a network. Supabase is
   an optional backup that syncs when online (Phase 2), not a dependency.
 - **Streak is tied to the Listening block only.** It's the protected non-negotiable.
@@ -58,4 +78,3 @@ src/
   fallback when online. Flip on the Supabase sync stub for cross-device backup.
 - **Phase 3:** Pronunciation loop — record yourself, transcribe on-device with
   whisper.rn, compare to the target card.
-```

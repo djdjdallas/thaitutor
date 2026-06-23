@@ -12,7 +12,7 @@ export const BLOCKS = [
   { key: "freeplay", label: "Free-play", sub: "Music, show, texting", icon: "music" },
 ];
 
-export default function TodayScreen({ streak, log, dueCount, mastered, total, onToggle, onStartReview }) {
+export default function TodayScreen({ streak, log, dueCount, mastered, total, voiceMissing, onToggle, onStartReview }) {
   const blocksDone = BLOCKS.filter((b) => log[b.key]).length;
 
   return (
@@ -23,7 +23,10 @@ export default function TodayScreen({ streak, log, dueCount, mastered, total, on
           <Text style={s.title}>เรียนภาษาไทย</Text>
           <Text style={s.subtitle}>Daily Thai tracker</Text>
         </View>
-        <View style={s.streakChip}>
+        <View
+          style={s.streakChip}
+          accessibilityLabel={`${streak} day streak`}
+        >
           <MaterialCommunityIcons name="fire" size={20} color={streak > 0 ? colors.accent : colors.textTertiary} />
           <View>
             <Text style={s.streakNum}>{streak}</Text>
@@ -31,6 +34,21 @@ export default function TodayScreen({ streak, log, dueCount, mastered, total, on
           </View>
         </View>
       </View>
+
+      {/* Thai voice missing hint. We only nag when the device check actually
+          came back empty (mostly Android without the Google TTS Thai pack). */}
+      {voiceMissing && (
+        <View style={s.voiceWarn} accessibilityRole="alert">
+          <Feather name="volume-x" size={18} color={colors.accentDark} />
+          <View style={{ flex: 1 }}>
+            <Text style={s.voiceWarnTitle}>No Thai voice installed</Text>
+            <Text style={s.voiceWarnSub}>
+              Card playback won't speak yet. On Android: Settings → System →
+              Languages &amp; input → Text-to-speech → install a Thai voice.
+            </Text>
+          </View>
+        </View>
+      )}
 
       {/* Progress summary */}
       <View style={s.card}>
@@ -47,6 +65,13 @@ export default function TodayScreen({ streak, log, dueCount, mastered, total, on
       <Pressable
         onPress={onStartReview}
         disabled={dueCount === 0}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: dueCount === 0 }}
+        accessibilityLabel={
+          dueCount > 0
+            ? `${dueCount} cards due. Start your review.`
+            : `All caught up. ${mastered} of ${total} words mastered.`
+        }
         style={({ pressed }) => [
           s.nudge,
           dueCount > 0 ? s.nudgeActive : s.nudgeIdle,
@@ -72,6 +97,9 @@ export default function TodayScreen({ streak, log, dueCount, mastered, total, on
             <Pressable
               key={b.key}
               onPress={() => onToggle(b.key)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: done }}
+              accessibilityLabel={`${b.label}. ${b.sub}.${b.protected ? " Protected: this is what your streak counts." : ""}`}
               style={[s.block, done && s.blockDone]}
             >
               <View style={[s.iconWrap, done ? s.iconWrapDone : s.iconWrapIdle]}>
@@ -109,6 +137,10 @@ const s = StyleSheet.create({
   streakLabel: { fontSize: font.tiny, color: colors.textTertiary },
 
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: space.md, marginBottom: space.sm, ...shadow.sm },
+
+  voiceWarn: { flexDirection: "row", alignItems: "flex-start", gap: 12, backgroundColor: colors.accentSoft, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: radius.md, padding: space.sm, marginBottom: space.sm },
+  voiceWarnTitle: { fontSize: font.small, fontWeight: "600", color: colors.textPrimary },
+  voiceWarnSub: { fontSize: font.tiny, color: colors.textSecondary, marginTop: 2, lineHeight: 16 },
   rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 },
   muted: { fontSize: font.small, color: colors.textSecondary },
   strong: { fontSize: font.small, fontWeight: "600", color: colors.textPrimary },

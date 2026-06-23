@@ -8,9 +8,10 @@ import { colors, radius, font } from "./src/theme";
 import { todayStr, shiftDay } from "./src/lib/dates";
 import {
   initDatabase, getDeck, getDueCards, getLog, setBlock,
-  recordReview, countMastered, getListeningDates,
+  recordReview, countMastered, getListeningDates, resetDatabase,
 } from "./src/db/database";
 import { maybeSync } from "./src/lib/supabaseSync";
+import { hasThaiVoice } from "./src/lib/tts";
 import TodayScreen from "./src/components/TodayScreen";
 import ReviewScreen from "./src/components/ReviewScreen";
 
@@ -31,6 +32,7 @@ function computeStreak(dates, today) {
 
 export default function App() {
   const [ready, setReady] = useState(false);
+  const [error, setError] = useState(null); // set if DB init/load throws
   const [view, setView] = useState("today");
 
   const [log, setLog] = useState({ listening: false, speaking: false, vocab: false, freeplay: false });
@@ -38,6 +40,7 @@ export default function App() {
   const [dueCount, setDueCount] = useState(0);
   const [mastered, setMastered] = useState(0);
   const [total, setTotal] = useState(0);
+  const [voiceMissing, setVoiceMissing] = useState(false);
 
   const [reviewQueue, setReviewQueue] = useState([]);
   const [sessionDone, setSessionDone] = useState(false);
@@ -58,12 +61,41 @@ export default function App() {
     setMastered(await countMastered());
   }
 
-  useEffect(() => {
-    (async () => {
+  // Boot: open the DB, run migrations, load derived state. If anything throws
+  // (corrupt DB, failed migration) we drop into a recovery screen instead of
+  // leaving the user staring at a frozen spinner.
+  async function boot() {
+    setError(null);
+    setReady(false);
+    try {
       await initDatabase();
       await loadAll();
       setReady(true);
-    })();
+      // Best-effort, non-blocking: warn if no Thai TTS voice is installed.
+      hasThaiVoice().then((ok) => setVoiceMissing(!ok));
+    } catch (e) {
+      console.warn("Database init failed:", e);
+      setError(e);
+    }
+  }
+
+  // Last resort from the recovery screen: wipe + re-seed, then boot again.
+  async function recover() {
+    setError(null);
+    setReady(false);
+    try {
+      await resetDatabase();
+      await loadAll();
+      setReady(true);
+    } catch (e) {
+      console.warn("Database reset failed:", e);
+      setError(e);
+    }
+  }
+
+  useEffect(() => {
+    boot(); // run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function toggleBlock(key) {
@@ -91,9 +123,40 @@ export default function App() {
     await loadAll();
   }
 
-  if (!ready) {
+  if (error) {
     return (
       <View style={s.loading}>
+        <View style={s.errorCard}>
+          <Feather name="alert-triangle" size={28} color={colors.accent} />
+          <Text style={s.errorTitle}>Couldn't open your data</Text>
+          <Text style={s.errorSub}>
+            Something went wrong loading the database. You can try again, or reset
+            it to start fresh. Resetting clears your streak and review progress.
+          </Text>
+          <Pressable
+            onPress={boot}
+            accessibilityRole="button"
+            accessibilityLabel="Try loading your data again"
+            style={({ pressed }) => [s.errBtn, pressed && { backgroundColor: colors.accentDark }]}
+          >
+            <Text style={s.errBtnText}>Try again</Text>
+          </Pressable>
+          <Pressable
+            onPress={recover}
+            accessibilityRole="button"
+            accessibilityLabel="Reset the database and start fresh"
+            style={s.errResetBtn}
+          >
+            <Text style={s.errResetText}>Reset and start fresh</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <View style={s.loading} accessibilityLabel="Loading">
         <ActivityIndicator color={colors.accent} />
       </View>
     );
@@ -123,6 +186,7 @@ export default function App() {
               dueCount={dueCount}
               mastered={mastered}
               total={total}
+              voiceMissing={voiceMissing}
               onToggle={toggleBlock}
               onStartReview={startReview}
             />
@@ -144,7 +208,13 @@ export default function App() {
 
 function TabButton({ active, onPress, icon, label }) {
   return (
-    <Pressable onPress={onPress} style={[s.tab, active && s.tabActive]}>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={label}
+      style={[s.tab, active && s.tabActive]}
+    >
       <Feather name={icon} size={16} color={active ? colors.textPrimary : colors.textTertiary} />
       <Text style={[s.tabLabel, active && s.tabLabelActive]}>{label}</Text>
     </Pressable>
@@ -153,7 +223,14 @@ function TabButton({ active, onPress, icon, label }) {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  loading: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
+  loading: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", padding: 24 },
+  errorCard: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 28, alignItems: "center", maxWidth: 360 },
+  errorTitle: { fontSize: font.h2, fontWeight: "600", color: colors.textPrimary, marginTop: 12 },
+  errorSub: { fontSize: font.small, color: colors.textTertiary, textAlign: "center", marginTop: 8, lineHeight: 20 },
+  errBtn: { backgroundColor: colors.accent, borderRadius: radius.md, paddingHorizontal: 24, paddingVertical: 12, marginTop: 20, alignSelf: "stretch", alignItems: "center" },
+  errBtnText: { fontSize: font.body, fontWeight: "600", color: "#fff" },
+  errResetBtn: { paddingVertical: 12, marginTop: 4 },
+  errResetText: { fontSize: font.small, color: colors.textTertiary },
   tabs: { flexDirection: "row", gap: 4, backgroundColor: "#f0f0ef", borderRadius: radius.md, padding: 4, marginHorizontal: 20, marginTop: 8 },
   tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 10, borderRadius: radius.sm },
   tabActive: { backgroundColor: colors.surface },

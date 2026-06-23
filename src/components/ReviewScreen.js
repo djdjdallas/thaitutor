@@ -31,6 +31,8 @@ export default function ReviewScreen({ queue, sessionDone, dueCount, onGrade, on
           {dueCount > 0 && (
             <Pressable
               onPress={() => { setIndex(0); setRevealed(false); onStart(); }}
+              accessibilityRole="button"
+              accessibilityLabel={sessionDone ? "Review again" : "Start review"}
               style={({ pressed }) => [s.primaryBtn, pressed && { backgroundColor: colors.accentDark }]}
             >
               <Feather name="rotate-ccw" size={16} color="#fff" />
@@ -70,13 +72,20 @@ export default function ReviewScreen({ queue, sessionDone, dueCount, onGrade, on
       </View>
 
       {/* Card (tap to reveal) */}
-      <Pressable style={s.card} onPress={() => setRevealed(true)}>
+      <Pressable
+        style={s.card}
+        onPress={() => setRevealed(true)}
+        accessibilityRole="button"
+        accessibilityLabel={revealed ? `${card.thai}, ${card.roman}` : "Thai card, tap to reveal the meaning"}
+      >
         <Text style={s.thai}>{card.thai}</Text>
 
         <Pressable
           onPress={(e) => { e.stopPropagation?.(); speakThai(card.thai); }}
           style={s.speakBtn}
           hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={`Play pronunciation of ${card.thai}`}
         >
           <Feather name="volume-2" size={18} color={colors.textTertiary} />
           <Text style={s.roman}>{card.roman}</Text>
@@ -95,15 +104,30 @@ export default function ReviewScreen({ queue, sessionDone, dueCount, onGrade, on
       {/* Grading */}
       {revealed ? (
         <View style={s.gradeRow}>
-          <Pressable onPress={() => handleGrade(false)} style={({ pressed }) => [s.missBtn, pressed && { backgroundColor: "#f5f5f4" }]}>
+          <Pressable
+            onPress={() => handleGrade(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Missed it. Send this card back to daily drilling."
+            style={({ pressed }) => [s.missBtn, pressed && { backgroundColor: "#f5f5f4" }]}
+          >
             <Text style={s.missText}>Missed it</Text>
           </Pressable>
-          <Pressable onPress={() => handleGrade(true)} style={({ pressed }) => [s.gotBtn, pressed && { backgroundColor: colors.accentDark }]}>
+          <Pressable
+            onPress={() => handleGrade(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Got it. Move this card up a box."
+            style={({ pressed }) => [s.gotBtn, pressed && { backgroundColor: colors.accentDark }]}
+          >
             <Text style={s.gotText}>Got it</Text>
           </Pressable>
         </View>
       ) : (
-        <Pressable onPress={() => setRevealed(true)} style={({ pressed }) => [s.revealBtn, pressed && { backgroundColor: "#000" }]}>
+        <Pressable
+          onPress={() => setRevealed(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Reveal the meaning"
+          style={({ pressed }) => [s.revealBtn, pressed && { backgroundColor: "#000" }]}
+        >
           <Text style={s.revealText}>Reveal</Text>
         </Pressable>
       )}

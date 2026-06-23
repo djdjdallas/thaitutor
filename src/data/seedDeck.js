@@ -3,6 +3,10 @@
 // Thai script is authoritative for pronunciation; `roman` is an approximate aid.
 //
 // `sort` preserves display order. `category` is for future filtering/lessons.
+//
+// prettier-ignore: kept as a one-card-per-line table so the deck stays scannable
+// and easy to diff when content is added or corrected.
+// prettier-ignore
 export const SEED_DECK = [
   { id: "g1", thai: "สวัสดี", roman: "sawatdee", en: "hello / goodbye", note: "Add khrap (male) or kha (female) on the end to be polite.", category: "greetings" },
   { id: "g2", thai: "ครับ", roman: "khrap", en: "polite particle (male speaker)", note: "You end sentences with this. Female speakers use kha.", category: "greetings" },
