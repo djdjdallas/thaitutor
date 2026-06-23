@@ -7,7 +7,7 @@
 // Why this works: it spends your limited review time on the words you're about
 // to forget, instead of the ones you already know cold. Same principle as Anki.
 
-import { daysBetween } from "./dates";
+import { daysBetween, shiftDay } from "./dates";
 
 // Rest period (in days) per box. Box 1 = due every day until you promote it.
 export const BOX_INTERVAL = { 1: 0, 2: 1, 3: 3, 4: 7, 5: 14 };
@@ -17,6 +17,13 @@ export const MAX_BOX = 5;
 export function isDue(card, today) {
   if (!card.last_reviewed) return true;
   return daysBetween(card.last_reviewed, today) >= BOX_INTERVAL[card.box];
+}
+
+// The date ("YYYY-MM-DD") a card next becomes due. Null for never-reviewed cards
+// (those are due immediately). Used to tell the user when the next batch lands.
+export function dueDate(card) {
+  if (!card.last_reviewed) return null;
+  return shiftDay(card.last_reviewed, BOX_INTERVAL[card.box]);
 }
 
 // Where a card goes after you grade it.

@@ -18,61 +18,107 @@ import { isDue, nextBox } from "../lib/srs";
 
 let db = null; // singleton connection
 
+// Schema version. Bump this and add a matching block in `runMigrations()`
+// whenever the table structure changes, so existing installs upgrade cleanly
+// instead of silently running against an old schema.
+const SCHEMA_VERSION = 1;
+
 export async function initDatabase() {
   if (db) return db;
   db = await SQLite.openDatabaseAsync("thai.db");
 
   // WAL mode = better concurrent read/write performance on device.
-  await db.execAsync(`
-    PRAGMA journal_mode = WAL;
+  await db.execAsync("PRAGMA journal_mode = WAL;");
 
-    CREATE TABLE IF NOT EXISTS cards (
-      id TEXT PRIMARY KEY NOT NULL,
-      thai TEXT NOT NULL,
-      roman TEXT,
-      en TEXT,
-      note TEXT,
-      category TEXT,
-      sort INTEGER
-    );
-
-    CREATE TABLE IF NOT EXISTS card_state (
-      card_id TEXT PRIMARY KEY NOT NULL,
-      box INTEGER NOT NULL DEFAULT 1,
-      last_reviewed TEXT,
-      FOREIGN KEY (card_id) REFERENCES cards(id)
-    );
-
-    CREATE TABLE IF NOT EXISTS daily_log (
-      date TEXT PRIMARY KEY NOT NULL,
-      listening INTEGER NOT NULL DEFAULT 0,
-      speaking INTEGER NOT NULL DEFAULT 0,
-      vocab INTEGER NOT NULL DEFAULT 0,
-      freeplay INTEGER NOT NULL DEFAULT 0
-    );
-  `);
-
-  await seedIfEmpty();
+  await runMigrations();
+  await syncSeedDeck();
   return db;
 }
 
-async function seedIfEmpty() {
-  const row = await db.getFirstAsync("SELECT COUNT(*) AS n FROM cards");
-  if (row && row.n > 0) return; // already seeded, leave progress alone
+// Versioned schema migrations, gated on SQLite's built-in `user_version`
+// counter. Each step runs exactly once per device and only ever moves forward,
+// so we can evolve the schema later without wiping anyone's progress.
+async function runMigrations() {
+  const { user_version: version } = await db.getFirstAsync("PRAGMA user_version");
 
-  // Insert all cards + a fresh box-1 state for each, in a single transaction.
+  if (version < 1) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS cards (
+        id TEXT PRIMARY KEY NOT NULL,
+        thai TEXT NOT NULL,
+        roman TEXT,
+        en TEXT,
+        note TEXT,
+        category TEXT,
+        sort INTEGER
+      );
+
+      CREATE TABLE IF NOT EXISTS card_state (
+        card_id TEXT PRIMARY KEY NOT NULL,
+        box INTEGER NOT NULL DEFAULT 1,
+        last_reviewed TEXT,
+        FOREIGN KEY (card_id) REFERENCES cards(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS daily_log (
+        date TEXT PRIMARY KEY NOT NULL,
+        listening INTEGER NOT NULL DEFAULT 0,
+        speaking INTEGER NOT NULL DEFAULT 0,
+        vocab INTEGER NOT NULL DEFAULT 0,
+        freeplay INTEGER NOT NULL DEFAULT 0
+      );
+    `);
+  }
+
+  // Future schema changes go here:
+  // if (version < 2) { await db.execAsync(`ALTER TABLE ...`); }
+
+  await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+}
+
+// Reconcile the on-device content with the current SEED_DECK on every launch.
+//
+// The old version only seeded when `cards` was empty, which meant any later
+// vocab fix or new card never reached users who already had data. Instead we:
+//   - UPSERT card *content* so corrections and additions always propagate.
+//   - INSERT OR IGNORE the per-card progress row, so existing boxes and review
+//     history are never touched (only brand-new cards get a fresh box-1 state).
+export async function syncSeedDeck() {
   await db.withTransactionAsync(async () => {
     for (const c of SEED_DECK) {
       await db.runAsync(
-        "INSERT INTO cards (id, thai, roman, en, note, category, sort) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        `INSERT INTO cards (id, thai, roman, en, note, category, sort)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           thai     = excluded.thai,
+           roman    = excluded.roman,
+           en       = excluded.en,
+           note     = excluded.note,
+           category = excluded.category,
+           sort     = excluded.sort`,
         [c.id, c.thai, c.roman, c.en, c.note || "", c.category || "", c.sort]
       );
       await db.runAsync(
-        "INSERT INTO card_state (card_id, box, last_reviewed) VALUES (?, 1, NULL)",
+        "INSERT OR IGNORE INTO card_state (card_id, box, last_reviewed) VALUES (?, 1, NULL)",
         [c.id]
       );
     }
   });
+}
+
+// Wipe everything and re-seed from scratch. Used by the recovery screen when
+// the DB is corrupt or the user explicitly resets, so they're never stuck.
+export async function resetDatabase() {
+  if (!db) db = await SQLite.openDatabaseAsync("thai.db");
+  await db.execAsync(`
+    DROP TABLE IF EXISTS card_state;
+    DROP TABLE IF EXISTS daily_log;
+    DROP TABLE IF EXISTS cards;
+    PRAGMA user_version = 0;
+  `);
+  await runMigrations();
+  await syncSeedDeck();
+  return db;
 }
 
 // --- Deck queries ----------------------------------------------------------
@@ -97,17 +143,16 @@ export async function getDueCards(today) {
 // Grade a card: move it up or back, stamp today's date.
 export async function recordReview(cardId, currentBox, correct, today) {
   const box = nextBox(currentBox, correct);
-  await db.runAsync(
-    "UPDATE card_state SET box = ?, last_reviewed = ? WHERE card_id = ?",
-    [box, today, cardId]
-  );
+  await db.runAsync("UPDATE card_state SET box = ?, last_reviewed = ? WHERE card_id = ?", [
+    box,
+    today,
+    cardId,
+  ]);
   return box;
 }
 
 export async function countMastered() {
-  const row = await db.getFirstAsync(
-    "SELECT COUNT(*) AS n FROM card_state WHERE box >= 5"
-  );
+  const row = await db.getFirstAsync("SELECT COUNT(*) AS n FROM card_state WHERE box >= 5");
   return row ? row.n : 0;
 }
 
@@ -146,8 +191,6 @@ export async function setBlock(date, key, value) {
 // All logged dates that completed the protected Listening block.
 // Used to compute the streak in JS.
 export async function getListeningDates() {
-  const rows = await db.getAllAsync(
-    "SELECT date FROM daily_log WHERE listening = 1"
-  );
+  const rows = await db.getAllAsync("SELECT date FROM daily_log WHERE listening = 1");
   return rows.map((r) => r.date);
 }
