@@ -143,17 +143,16 @@ export async function getDueCards(today) {
 // Grade a card: move it up or back, stamp today's date.
 export async function recordReview(cardId, currentBox, correct, today) {
   const box = nextBox(currentBox, correct);
-  await db.runAsync(
-    "UPDATE card_state SET box = ?, last_reviewed = ? WHERE card_id = ?",
-    [box, today, cardId]
-  );
+  await db.runAsync("UPDATE card_state SET box = ?, last_reviewed = ? WHERE card_id = ?", [
+    box,
+    today,
+    cardId,
+  ]);
   return box;
 }
 
 export async function countMastered() {
-  const row = await db.getFirstAsync(
-    "SELECT COUNT(*) AS n FROM card_state WHERE box >= 5"
-  );
+  const row = await db.getFirstAsync("SELECT COUNT(*) AS n FROM card_state WHERE box >= 5");
   return row ? row.n : 0;
 }
 
@@ -192,8 +191,6 @@ export async function setBlock(date, key, value) {
 // All logged dates that completed the protected Listening block.
 // Used to compute the streak in JS.
 export async function getListeningDates() {
-  const rows = await db.getAllAsync(
-    "SELECT date FROM daily_log WHERE listening = 1"
-  );
+  const rows = await db.getAllAsync("SELECT date FROM daily_log WHERE listening = 1");
   return rows.map((r) => r.date);
 }

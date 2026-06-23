@@ -1,10 +1,4 @@
-import {
-  toDateStr,
-  todayStr,
-  parseDate,
-  shiftDay,
-  daysBetween,
-} from "./dates";
+import { toDateStr, todayStr, parseDate, shiftDay, daysBetween } from "./dates";
 
 describe("toDateStr", () => {
   it("zero-pads month and day", () => {

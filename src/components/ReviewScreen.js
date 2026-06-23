@@ -6,7 +6,14 @@ import { speakThai } from "../lib/tts";
 
 // `queue` is the list of due cards for this session, passed in from App.
 // We track only the position + reveal state locally; grading bubbles up.
-export default function ReviewScreen({ queue, sessionDone, dueCount, onGrade, onStart, onReplayDone }) {
+export default function ReviewScreen({
+  queue,
+  sessionDone,
+  dueCount,
+  onGrade,
+  onStart,
+  onReplayDone,
+}) {
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
 
@@ -25,15 +32,22 @@ export default function ReviewScreen({ queue, sessionDone, dueCount, onGrade, on
             {sessionDone
               ? "Nice. Cards you knew moved up a box and will come back later."
               : dueCount > 0
-              ? `${dueCount} cards waiting.`
-              : "Come back tomorrow for your next batch."}
+                ? `${dueCount} cards waiting.`
+                : "Come back tomorrow for your next batch."}
           </Text>
           {dueCount > 0 && (
             <Pressable
-              onPress={() => { setIndex(0); setRevealed(false); onStart(); }}
+              onPress={() => {
+                setIndex(0);
+                setRevealed(false);
+                onStart();
+              }}
               accessibilityRole="button"
               accessibilityLabel={sessionDone ? "Review again" : "Start review"}
-              style={({ pressed }) => [s.primaryBtn, pressed && { backgroundColor: colors.accentDark }]}
+              style={({ pressed }) => [
+                s.primaryBtn,
+                pressed && { backgroundColor: colors.accentDark },
+              ]}
             >
               <Feather name="rotate-ccw" size={16} color="#fff" />
               <Text style={s.primaryBtnText}>{sessionDone ? "Review again" : "Start review"}</Text>
@@ -60,7 +74,9 @@ export default function ReviewScreen({ queue, sessionDone, dueCount, onGrade, on
     <View style={s.wrap}>
       {/* Progress + box indicator */}
       <View style={s.progressRow}>
-        <Text style={s.muted}>{index + 1} / {queue.length}</Text>
+        <Text style={s.muted}>
+          {index + 1} / {queue.length}
+        </Text>
         <View style={s.boxRow}>
           <Text style={s.muted}>box {card.box}</Text>
           <View style={s.dots}>
@@ -76,12 +92,17 @@ export default function ReviewScreen({ queue, sessionDone, dueCount, onGrade, on
         style={s.card}
         onPress={() => setRevealed(true)}
         accessibilityRole="button"
-        accessibilityLabel={revealed ? `${card.thai}, ${card.roman}` : "Thai card, tap to reveal the meaning"}
+        accessibilityLabel={
+          revealed ? `${card.thai}, ${card.roman}` : "Thai card, tap to reveal the meaning"
+        }
       >
         <Text style={s.thai}>{card.thai}</Text>
 
         <Pressable
-          onPress={(e) => { e.stopPropagation?.(); speakThai(card.thai); }}
+          onPress={(e) => {
+            e.stopPropagation?.();
+            speakThai(card.thai);
+          }}
           style={s.speakBtn}
           hitSlop={10}
           accessibilityRole="button"
@@ -139,7 +160,12 @@ const s = StyleSheet.create({
   wrap: { padding: 20 },
   centerWrap: { padding: 20 },
 
-  progressRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: space.sm },
+  progressRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: space.sm,
+  },
   muted: { fontSize: font.small, color: colors.textTertiary },
   boxRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   dots: { flexDirection: "row", gap: 3 },
@@ -147,27 +173,109 @@ const s = StyleSheet.create({
   dotOn: { backgroundColor: colors.accent },
   dotOff: { backgroundColor: "#e5e5e5" },
 
-  card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, paddingVertical: 40, paddingHorizontal: 24, alignItems: "center", justifyContent: "center", minHeight: 260, marginBottom: space.sm, ...shadow.sm },
-  thai: { fontSize: 48, fontWeight: "600", color: colors.textPrimary, marginBottom: 12, textAlign: "center" },
+  card: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    paddingVertical: 40,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 260,
+    marginBottom: space.sm,
+    ...shadow.sm,
+  },
+  thai: {
+    fontSize: 48,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    marginBottom: 12,
+    textAlign: "center",
+  },
   speakBtn: { flexDirection: "row", alignItems: "center", gap: 8 },
   roman: { fontSize: 18, color: colors.textTertiary },
-  answer: { marginTop: space.md, paddingTop: space.md, borderTopWidth: 1, borderTopColor: colors.borderSoft, width: "100%", alignItems: "center" },
+  answer: {
+    marginTop: space.md,
+    paddingTop: space.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSoft,
+    width: "100%",
+    alignItems: "center",
+  },
   en: { fontSize: 20, color: colors.textPrimary, textAlign: "center" },
-  note: { fontSize: font.small, color: colors.textSecondary, marginTop: 12, textAlign: "center", lineHeight: 20 },
+  note: {
+    fontSize: font.small,
+    color: colors.textSecondary,
+    marginTop: 12,
+    textAlign: "center",
+    lineHeight: 20,
+  },
   tapHint: { fontSize: font.small, color: colors.textTertiary, marginTop: space.md },
 
   gradeRow: { flexDirection: "row", gap: 12 },
-  missBtn: { flex: 1, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: radius.md, paddingVertical: 14, alignItems: "center" },
+  missBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
   missText: { fontSize: font.body, fontWeight: "500", color: colors.textSecondary },
-  gotBtn: { flex: 1, backgroundColor: colors.accent, borderRadius: radius.md, paddingVertical: 14, alignItems: "center", ...shadow.sm },
+  gotBtn: {
+    flex: 1,
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: "center",
+    ...shadow.sm,
+  },
   gotText: { fontSize: font.body, fontWeight: "500", color: "#fff" },
-  revealBtn: { backgroundColor: colors.dark, borderRadius: radius.md, paddingVertical: 14, alignItems: "center" },
+  revealBtn: {
+    backgroundColor: colors.dark,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
   revealText: { fontSize: font.body, fontWeight: "500", color: "#fff" },
 
-  emptyCard: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 32, alignItems: "center", ...shadow.sm },
-  emptyIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center", marginBottom: 16 },
+  emptyCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: 32,
+    alignItems: "center",
+    ...shadow.sm,
+  },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
   emptyTitle: { fontSize: font.h2, fontWeight: "600", color: colors.textPrimary, marginBottom: 4 },
-  emptySub: { fontSize: font.small, color: colors.textTertiary, textAlign: "center", marginBottom: 20, lineHeight: 20 },
-  primaryBtn: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.accent, borderRadius: radius.md, paddingHorizontal: 20, paddingVertical: 10, ...shadow.sm },
+  emptySub: {
+    fontSize: font.small,
+    color: colors.textTertiary,
+    textAlign: "center",
+    marginBottom: 20,
+    lineHeight: 20,
+  },
+  primaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    ...shadow.sm,
+  },
   primaryBtnText: { fontSize: font.body, fontWeight: "500", color: "#fff" },
 });

@@ -7,8 +7,15 @@ import { Feather } from "@expo/vector-icons";
 import { colors, radius, font } from "./src/theme";
 import { todayStr, shiftDay } from "./src/lib/dates";
 import {
-  initDatabase, getDeck, getDueCards, getLog, setBlock,
-  recordReview, countMastered, getListeningDates, resetDatabase,
+  initDatabase,
+  getDeck,
+  getDueCards,
+  getLog,
+  setBlock,
+  recordReview,
+  countMastered,
+  getListeningDates,
+  resetDatabase,
 } from "./src/db/database";
 import { maybeSync } from "./src/lib/supabaseSync";
 import { hasThaiVoice } from "./src/lib/tts";
@@ -35,7 +42,12 @@ export default function App() {
   const [error, setError] = useState(null); // set if DB init/load throws
   const [view, setView] = useState("today");
 
-  const [log, setLog] = useState({ listening: false, speaking: false, vocab: false, freeplay: false });
+  const [log, setLog] = useState({
+    listening: false,
+    speaking: false,
+    vocab: false,
+    freeplay: false,
+  });
   const [streak, setStreak] = useState(0);
   const [dueCount, setDueCount] = useState(0);
   const [mastered, setMastered] = useState(0);
@@ -130,8 +142,8 @@ export default function App() {
           <Feather name="alert-triangle" size={28} color={colors.accent} />
           <Text style={s.errorTitle}>Couldn't open your data</Text>
           <Text style={s.errorSub}>
-            Something went wrong loading the database. You can try again, or reset
-            it to start fresh. Resetting clears your streak and review progress.
+            Something went wrong loading the database. You can try again, or reset it to start
+            fresh. Resetting clears your streak and review progress.
           </Text>
           <Pressable
             onPress={boot}
@@ -169,10 +181,18 @@ export default function App() {
 
         {/* Segmented tabs */}
         <View style={s.tabs}>
-          <TabButton active={view === "today"} onPress={() => setView("today")} icon="calendar" label="Today" />
+          <TabButton
+            active={view === "today"}
+            onPress={() => setView("today")}
+            icon="calendar"
+            label="Today"
+          />
           <TabButton
             active={view === "review"}
-            onPress={() => { setSessionDone(false); setView("review"); }}
+            onPress={() => {
+              setSessionDone(false);
+              setView("review");
+            }}
             icon="book-open"
             label={dueCount ? `Review (${dueCount})` : "Review"}
           />
@@ -223,16 +243,60 @@ function TabButton({ active, onPress, icon, label }) {
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  loading: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", padding: 24 },
-  errorCard: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 28, alignItems: "center", maxWidth: 360 },
+  loading: {
+    flex: 1,
+    backgroundColor: colors.bg,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 24,
+  },
+  errorCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: 28,
+    alignItems: "center",
+    maxWidth: 360,
+  },
   errorTitle: { fontSize: font.h2, fontWeight: "600", color: colors.textPrimary, marginTop: 12 },
-  errorSub: { fontSize: font.small, color: colors.textTertiary, textAlign: "center", marginTop: 8, lineHeight: 20 },
-  errBtn: { backgroundColor: colors.accent, borderRadius: radius.md, paddingHorizontal: 24, paddingVertical: 12, marginTop: 20, alignSelf: "stretch", alignItems: "center" },
+  errorSub: {
+    fontSize: font.small,
+    color: colors.textTertiary,
+    textAlign: "center",
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  errBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    marginTop: 20,
+    alignSelf: "stretch",
+    alignItems: "center",
+  },
   errBtnText: { fontSize: font.body, fontWeight: "600", color: "#fff" },
   errResetBtn: { paddingVertical: 12, marginTop: 4 },
   errResetText: { fontSize: font.small, color: colors.textTertiary },
-  tabs: { flexDirection: "row", gap: 4, backgroundColor: "#f0f0ef", borderRadius: radius.md, padding: 4, marginHorizontal: 20, marginTop: 8 },
-  tab: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 10, borderRadius: radius.sm },
+  tabs: {
+    flexDirection: "row",
+    gap: 4,
+    backgroundColor: "#f0f0ef",
+    borderRadius: radius.md,
+    padding: 4,
+    marginHorizontal: 20,
+    marginTop: 8,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: radius.sm,
+  },
   tabActive: { backgroundColor: colors.surface },
   tabLabel: { fontSize: font.small, fontWeight: "500", color: colors.textTertiary },
   tabLabelActive: { color: colors.textPrimary },

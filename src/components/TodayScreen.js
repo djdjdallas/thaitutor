@@ -6,13 +6,28 @@ import { colors, space, radius, shadow, font } from "../theme";
 // The four daily study blocks. Listening is the protected non-negotiable
 // (it's what the streak is based on).
 export const BLOCKS = [
-  { key: "listening", label: "Listening", sub: "Comprehensible input ~45 min", icon: "headphones", protected: true },
+  {
+    key: "listening",
+    label: "Listening",
+    sub: "Comprehensible input ~45 min",
+    icon: "headphones",
+    protected: true,
+  },
   { key: "speaking", label: "Speaking", sub: "Tutor / shadowing ~30 min", icon: "message-circle" },
   { key: "vocab", label: "Vocab + Script", sub: "SRS review ~30 min", icon: "layers" },
   { key: "freeplay", label: "Free-play", sub: "Music, show, texting", icon: "music" },
 ];
 
-export default function TodayScreen({ streak, log, dueCount, mastered, total, voiceMissing, onToggle, onStartReview }) {
+export default function TodayScreen({
+  streak,
+  log,
+  dueCount,
+  mastered,
+  total,
+  voiceMissing,
+  onToggle,
+  onStartReview,
+}) {
   const blocksDone = BLOCKS.filter((b) => log[b.key]).length;
 
   return (
@@ -23,11 +38,12 @@ export default function TodayScreen({ streak, log, dueCount, mastered, total, vo
           <Text style={s.title}>เรียนภาษาไทย</Text>
           <Text style={s.subtitle}>Daily Thai tracker</Text>
         </View>
-        <View
-          style={s.streakChip}
-          accessibilityLabel={`${streak} day streak`}
-        >
-          <MaterialCommunityIcons name="fire" size={20} color={streak > 0 ? colors.accent : colors.textTertiary} />
+        <View style={s.streakChip} accessibilityLabel={`${streak} day streak`}>
+          <MaterialCommunityIcons
+            name="fire"
+            size={20}
+            color={streak > 0 ? colors.accent : colors.textTertiary}
+          />
           <View>
             <Text style={s.streakNum}>{streak}</Text>
             <Text style={s.streakLabel}>day streak</Text>
@@ -43,8 +59,8 @@ export default function TodayScreen({ streak, log, dueCount, mastered, total, vo
           <View style={{ flex: 1 }}>
             <Text style={s.voiceWarnTitle}>No Thai voice installed</Text>
             <Text style={s.voiceWarnSub}>
-              Card playback won't speak yet. On Android: Settings → System →
-              Languages &amp; input → Text-to-speech → install a Thai voice.
+              Card playback won't speak yet. On Android: Settings → System → Languages &amp; input →
+              Text-to-speech → install a Thai voice.
             </Text>
           </View>
         </View>
@@ -54,7 +70,9 @@ export default function TodayScreen({ streak, log, dueCount, mastered, total, vo
       <View style={s.card}>
         <View style={s.rowBetween}>
           <Text style={s.muted}>Today's blocks</Text>
-          <Text style={s.strong}>{blocksDone}/{BLOCKS.length}</Text>
+          <Text style={s.strong}>
+            {blocksDone}/{BLOCKS.length}
+          </Text>
         </View>
         <View style={s.track}>
           <View style={[s.fill, { width: `${(blocksDone / BLOCKS.length) * 100}%` }]} />
@@ -103,7 +121,11 @@ export default function TodayScreen({ streak, log, dueCount, mastered, total, vo
               style={[s.block, done && s.blockDone]}
             >
               <View style={[s.iconWrap, done ? s.iconWrapDone : s.iconWrapIdle]}>
-                <Feather name={b.icon} size={20} color={done ? colors.accent : colors.textTertiary} />
+                <Feather
+                  name={b.icon}
+                  size={20}
+                  color={done ? colors.accent : colors.textTertiary}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <View style={s.blockTitleRow}>
@@ -121,7 +143,8 @@ export default function TodayScreen({ streak, log, dueCount, mastered, total, vo
       </View>
 
       <Text style={s.footnote}>
-        Your streak counts days you finish the Listening block.{"\n"}Miss everything else, keep that one.
+        Your streak counts days you finish the Listening block.{"\n"}Miss everything else, keep that
+        one.
       </Text>
     </ScrollView>
   );
@@ -129,41 +152,124 @@ export default function TodayScreen({ streak, log, dueCount, mastered, total, vo
 
 const s = StyleSheet.create({
   scroll: { padding: 20, paddingBottom: 40 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: space.md },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: space.md,
+  },
   title: { fontSize: font.h1, fontWeight: "600", color: colors.textPrimary, letterSpacing: -0.5 },
   subtitle: { fontSize: font.small, color: colors.textTertiary, marginTop: 4 },
-  streakChip: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 8, ...shadow.sm },
+  streakChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    ...shadow.sm,
+  },
   streakNum: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, lineHeight: 20 },
   streakLabel: { fontSize: font.tiny, color: colors.textTertiary },
 
-  card: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: space.md, marginBottom: space.sm, ...shadow.sm },
+  card: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: space.md,
+    marginBottom: space.sm,
+    ...shadow.sm,
+  },
 
-  voiceWarn: { flexDirection: "row", alignItems: "flex-start", gap: 12, backgroundColor: colors.accentSoft, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: radius.md, padding: space.sm, marginBottom: space.sm },
+  voiceWarn: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+    backgroundColor: colors.accentSoft,
+    borderColor: colors.accentBorder,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: space.sm,
+    marginBottom: space.sm,
+  },
   voiceWarnTitle: { fontSize: font.small, fontWeight: "600", color: colors.textPrimary },
   voiceWarnSub: { fontSize: font.tiny, color: colors.textSecondary, marginTop: 2, lineHeight: 16 },
-  rowBetween: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 },
+  rowBetween: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginBottom: 12,
+  },
   muted: { fontSize: font.small, color: colors.textSecondary },
   strong: { fontSize: font.small, fontWeight: "600", color: colors.textPrimary },
   track: { height: 8, backgroundColor: "#f0f0ef", borderRadius: radius.pill, overflow: "hidden" },
   fill: { height: "100%", backgroundColor: colors.accent, borderRadius: radius.pill },
 
-  nudge: { flexDirection: "row", alignItems: "center", borderRadius: radius.lg, padding: space.md, marginBottom: space.sm },
+  nudge: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: radius.lg,
+    padding: space.md,
+    marginBottom: space.sm,
+  },
   nudgeActive: { backgroundColor: colors.accent, ...shadow.sm },
   nudgeIdle: { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
   nudgeTitle: { fontSize: font.body, fontWeight: "600", color: "#fff" },
   nudgeSub: { fontSize: font.small, color: "#fef3c7", marginTop: 2 },
 
-  block: { flexDirection: "row", alignItems: "center", gap: 16, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: space.sm },
+  block: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: space.sm,
+  },
   blockDone: { borderColor: colors.accentBorder },
-  iconWrap: { width: 44, height: 44, borderRadius: radius.md, alignItems: "center", justifyContent: "center" },
+  iconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   iconWrapIdle: { backgroundColor: "#f5f5f4" },
   iconWrapDone: { backgroundColor: colors.accentSoft },
   blockTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   blockLabel: { fontSize: font.body, fontWeight: "500", color: colors.textPrimary },
-  tag: { fontSize: 10, letterSpacing: 0.5, color: colors.textSecondary, backgroundColor: "#f5f5f4", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: "hidden" },
+  tag: {
+    fontSize: 10,
+    letterSpacing: 0.5,
+    color: colors.textSecondary,
+    backgroundColor: "#f5f5f4",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    overflow: "hidden",
+  },
   blockSub: { fontSize: font.small, color: colors.textTertiary, marginTop: 2 },
-  checkbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: "#d4d4d4", alignItems: "center", justifyContent: "center" },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#d4d4d4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   checkboxDone: { backgroundColor: colors.accent, borderColor: colors.accent },
 
-  footnote: { fontSize: 12, color: colors.textTertiary, textAlign: "center", marginTop: space.md, lineHeight: 18 },
+  footnote: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: "center",
+    marginTop: space.md,
+    lineHeight: 18,
+  },
 });
