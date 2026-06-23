@@ -1,4 +1,4 @@
-import { BOX_INTERVAL, MAX_BOX, isDue, nextBox } from "./srs";
+import { BOX_INTERVAL, MAX_BOX, isDue, dueDate, nextBox } from "./srs";
 import { shiftDay } from "./dates";
 
 const TODAY = "2024-06-23";
@@ -36,6 +36,30 @@ describe("isDue", () => {
   it("box 5 is not due one day before its 14-day interval", () => {
     const card = { box: 5, last_reviewed: shiftDay(TODAY, -13) };
     expect(isDue(card, TODAY)).toBe(false);
+  });
+});
+
+describe("dueDate", () => {
+  it("is null for a never-reviewed card (due now)", () => {
+    expect(dueDate({ box: 1, last_reviewed: null })).toBeNull();
+  });
+
+  it("box 1 is due again the day after review (interval 0)", () => {
+    expect(dueDate({ box: 1, last_reviewed: "2024-06-23" })).toBe("2024-06-23");
+  });
+
+  it("adds the box interval to the last review date", () => {
+    // Box 4 rests 7 days.
+    expect(dueDate({ box: 4, last_reviewed: "2024-06-23" })).toBe(
+      shiftDay("2024-06-23", BOX_INTERVAL[4])
+    );
+  });
+
+  it("agrees with isDue on the boundary", () => {
+    const card = { box: 3, last_reviewed: "2024-06-23" };
+    const due = dueDate(card);
+    expect(isDue(card, due)).toBe(true);
+    expect(isDue(card, shiftDay(due, -1))).toBe(false);
   });
 });
 

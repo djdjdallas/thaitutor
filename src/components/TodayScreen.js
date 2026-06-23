@@ -2,6 +2,13 @@ import React from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors, space, radius, shadow, font } from "../theme";
+import { parseDate } from "../lib/dates";
+
+// Single-letter weekday for a "YYYY-MM-DD" string (Sun-first).
+const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"];
+function weekdayLetter(dateStr) {
+  return WEEKDAY[parseDate(dateStr).getDay()];
+}
 
 // The four daily study blocks. Listening is the protected non-negotiable
 // (it's what the streak is based on).
@@ -25,10 +32,18 @@ export default function TodayScreen({
   mastered,
   total,
   voiceMissing,
+  week = [],
+  nextDue = null,
+  categories = [],
   onToggle,
   onStartReview,
 }) {
   const blocksDone = BLOCKS.filter((b) => log[b.key]).length;
+  // Idle-state subtitle for the review nudge: lead with when the next batch
+  // lands (more motivating than a static mastered count), fall back to mastery.
+  const caughtUpSub = nextDue
+    ? `Next batch ${nextDue} · ${mastered}/${total} mastered`
+    : `${mastered}/${total} words mastered`;
 
   return (
     <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
@@ -79,6 +94,30 @@ export default function TodayScreen({
         </View>
       </View>
 
+      {/* Weekly listening strip: a filled dot for each of the last 7 days you
+          finished the protected Listening block. */}
+      {week.length > 0 && (
+        <View style={s.card}>
+          <Text style={[s.muted, { marginBottom: 12 }]}>This week's listening</Text>
+          <View style={s.weekRow}>
+            {week.map((d) => (
+              <View
+                key={d.date}
+                style={s.weekCol}
+                accessibilityLabel={`${d.date}: ${d.done ? "done" : "missed"}`}
+              >
+                <View style={[s.weekDot, d.done && s.weekDotDone, d.isToday && s.weekDotToday]}>
+                  {d.done && <Feather name="check" size={12} color="#fff" />}
+                </View>
+                <Text style={[s.weekDay, d.isToday && s.weekDayToday]}>
+                  {weekdayLetter(d.date)}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
       {/* Due review nudge */}
       <Pressable
         onPress={onStartReview}
@@ -101,7 +140,7 @@ export default function TodayScreen({
             {dueCount > 0 ? `${dueCount} cards due` : "All caught up"}
           </Text>
           <Text style={[s.nudgeSub, dueCount === 0 && { color: colors.textTertiary }]}>
-            {dueCount > 0 ? "Tap to start your review" : `${mastered}/${total} words mastered`}
+            {dueCount > 0 ? "Tap to start your review" : caughtUpSub}
           </Text>
         </View>
         {dueCount > 0 && <Feather name="chevron-right" size={22} color="#fff" />}
@@ -141,6 +180,34 @@ export default function TodayScreen({
           );
         })}
       </View>
+
+      {/* Mastery by category: how much of each topic has reached the top box. */}
+      {categories.length > 0 && (
+        <View style={[s.card, { marginTop: space.sm }]}>
+          <Text style={[s.muted, { marginBottom: 12 }]}>Mastery by category</Text>
+          <View style={{ gap: 10 }}>
+            {categories.map((c) => {
+              const pct = c.total > 0 ? (c.mastered / c.total) * 100 : 0;
+              return (
+                <View
+                  key={c.category}
+                  accessibilityLabel={`${c.category}: ${c.mastered} of ${c.total} mastered`}
+                >
+                  <View style={s.catRow}>
+                    <Text style={s.catLabel}>{c.category}</Text>
+                    <Text style={s.catCount}>
+                      {c.mastered}/{c.total}
+                    </Text>
+                  </View>
+                  <View style={s.catTrack}>
+                    <View style={[s.catFill, { width: `${pct}%` }]} />
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      )}
 
       <Text style={s.footnote}>
         Your streak counts days you finish the Listening block.{"\n"}Miss everything else, keep that
@@ -208,6 +275,32 @@ const s = StyleSheet.create({
   strong: { fontSize: font.small, fontWeight: "600", color: colors.textPrimary },
   track: { height: 8, backgroundColor: "#f0f0ef", borderRadius: radius.pill, overflow: "hidden" },
   fill: { height: "100%", backgroundColor: colors.accent, borderRadius: radius.pill },
+
+  weekRow: { flexDirection: "row", justifyContent: "space-between" },
+  weekCol: { alignItems: "center", gap: 6 },
+  weekDot: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#f0f0ef",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  weekDotDone: { backgroundColor: colors.accent },
+  weekDotToday: { borderWidth: 2, borderColor: colors.accentDark },
+  weekDay: { fontSize: font.tiny, color: colors.textTertiary },
+  weekDayToday: { color: colors.textPrimary, fontWeight: "600" },
+
+  catRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 4 },
+  catLabel: { fontSize: font.small, color: colors.textSecondary, textTransform: "capitalize" },
+  catCount: { fontSize: font.small, fontWeight: "600", color: colors.textPrimary },
+  catTrack: {
+    height: 6,
+    backgroundColor: "#f0f0ef",
+    borderRadius: radius.pill,
+    overflow: "hidden",
+  },
+  catFill: { height: "100%", backgroundColor: colors.accent, borderRadius: radius.pill },
 
   nudge: {
     flexDirection: "row",

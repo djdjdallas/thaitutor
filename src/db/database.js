@@ -83,7 +83,7 @@ async function runMigrations() {
 //   - UPSERT card *content* so corrections and additions always propagate.
 //   - INSERT OR IGNORE the per-card progress row, so existing boxes and review
 //     history are never touched (only brand-new cards get a fresh box-1 state).
-async function syncSeedDeck() {
+export async function syncSeedDeck() {
   await db.withTransactionAsync(async () => {
     for (const c of SEED_DECK) {
       await db.runAsync(

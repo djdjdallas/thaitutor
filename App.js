@@ -5,7 +5,8 @@ import { StatusBar } from "expo-status-bar";
 import { Feather } from "@expo/vector-icons";
 
 import { colors, radius, font } from "./src/theme";
-import { todayStr, shiftDay } from "./src/lib/dates";
+import { todayStr, shiftDay, daysBetween } from "./src/lib/dates";
+import { isDue, dueDate, MAX_BOX } from "./src/lib/srs";
 import {
   initDatabase,
   getDeck,
@@ -37,6 +38,47 @@ function computeStreak(dates, today) {
   return count;
 }
 
+// The last 7 days (oldest -> today) tagged with whether Listening was done, for
+// the weekly dot strip.
+function computeWeek(listeningSet, today) {
+  const out = [];
+  for (let i = 6; i >= 0; i--) {
+    const date = shiftDay(today, -i);
+    out.push({ date, done: listeningSet.has(date), isToday: i === 0 });
+  }
+  return out;
+}
+
+// A friendly "when does the next card come back" label, or null if something is
+// already due (the nudge handles that case).
+function computeNextDue(deck, today) {
+  let best = null;
+  for (const c of deck) {
+    if (isDue(c, today)) continue;
+    const d = dueDate(c);
+    if (d && (best === null || d < best)) best = d;
+  }
+  if (!best) return null;
+  const days = daysBetween(today, best);
+  return days <= 1 ? "tomorrow" : `in ${days} days`;
+}
+
+// Per-category {mastered, total}, preserving the deck's display order.
+function computeCategoryMastery(deck) {
+  const order = [];
+  const map = {};
+  for (const c of deck) {
+    const key = c.category || "other";
+    if (!map[key]) {
+      map[key] = { category: key, mastered: 0, total: 0 };
+      order.push(key);
+    }
+    map[key].total += 1;
+    if (c.box >= MAX_BOX) map[key].mastered += 1;
+  }
+  return order.map((key) => map[key]);
+}
+
 export default function App() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(null); // set if DB init/load throws
@@ -53,6 +95,9 @@ export default function App() {
   const [mastered, setMastered] = useState(0);
   const [total, setTotal] = useState(0);
   const [voiceMissing, setVoiceMissing] = useState(false);
+  const [week, setWeek] = useState([]);
+  const [nextDue, setNextDue] = useState(null);
+  const [categories, setCategories] = useState([]);
 
   const [reviewQueue, setReviewQueue] = useState([]);
   const [sessionDone, setSessionDone] = useState(false);
@@ -71,6 +116,9 @@ export default function App() {
     setLog(todayLog);
     setStreak(computeStreak(listening, today));
     setMastered(await countMastered());
+    setWeek(computeWeek(new Set(listening), today));
+    setNextDue(computeNextDue(deck, today));
+    setCategories(computeCategoryMastery(deck));
   }
 
   // Boot: open the DB, run migrations, load derived state. If anything throws
@@ -207,6 +255,9 @@ export default function App() {
               mastered={mastered}
               total={total}
               voiceMissing={voiceMissing}
+              week={week}
+              nextDue={nextDue}
+              categories={categories}
               onToggle={toggleBlock}
               onStartReview={startReview}
             />
