@@ -21,7 +21,7 @@ let db = null; // singleton connection
 // Schema version. Bump this and add a matching block in `runMigrations()`
 // whenever the table structure changes, so existing installs upgrade cleanly
 // instead of silently running against an old schema.
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 export async function initDatabase() {
   if (db) return db;
@@ -70,8 +70,19 @@ async function runMigrations() {
     `);
   }
 
+  if (version < 2) {
+    // Key/value app settings (e.g. the audio-first review preference). Separate
+    // from progress so it survives a deck re-sync and rides the migration path.
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT
+      );
+    `);
+  }
+
   // Future schema changes go here:
-  // if (version < 2) { await db.execAsync(`ALTER TABLE ...`); }
+  // if (version < 3) { await db.execAsync(`ALTER TABLE ...`); }
 
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
@@ -113,12 +124,30 @@ export async function resetDatabase() {
   await db.execAsync(`
     DROP TABLE IF EXISTS card_state;
     DROP TABLE IF EXISTS daily_log;
+    DROP TABLE IF EXISTS settings;
     DROP TABLE IF EXISTS cards;
     PRAGMA user_version = 0;
   `);
   await runMigrations();
   await syncSeedDeck();
   return db;
+}
+
+// --- Settings (key/value) --------------------------------------------------
+
+// Read a setting, or `fallback` if it was never set. Values are stored as text;
+// callers encode/decode (e.g. "1"/"0" for booleans).
+export async function getSetting(key, fallback = null) {
+  const row = await db.getFirstAsync("SELECT value FROM settings WHERE key = ?", [key]);
+  return row ? row.value : fallback;
+}
+
+export async function setSetting(key, value) {
+  await db.runAsync(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [key, String(value)]
+  );
 }
 
 // --- Deck queries ----------------------------------------------------------

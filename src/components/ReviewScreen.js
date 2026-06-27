@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { colors, space, radius, shadow, font } from "../theme";
@@ -6,10 +6,16 @@ import { speakThai } from "../lib/tts";
 
 // `queue` is the list of due cards for this session, passed in from App.
 // We track only the position + reveal state locally; grading bubbles up.
+//
+// Audio-first mode trains the ear before the eye: the card auto-plays its Thai
+// audio on arrival and the romanization stays hidden until you reveal, so you
+// can't lean on the roman spelling.
 export default function ReviewScreen({
   queue,
   sessionDone,
   dueCount,
+  audioFirst = false,
+  onToggleAudioFirst,
   onGrade,
   onStart,
   onReplayDone,
@@ -17,8 +23,20 @@ export default function ReviewScreen({
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
 
+  const inSession = !!queue && queue.length > 0 && !sessionDone;
+  const card = inSession ? queue[index] : null;
+
+  // Auto-play when a new card arrives (or when the user flips audio-first on).
+  useEffect(() => {
+    if (inSession && audioFirst && card) speakThai(card.thai);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card?.id, audioFirst, inSession]);
+
+  // Hide the romanization until reveal in audio-first mode.
+  const showRoman = !audioFirst || revealed;
+
   // Empty / start / finished state.
-  if (!queue || queue.length === 0 || sessionDone) {
+  if (!inSession) {
     return (
       <View style={s.centerWrap}>
         <View style={s.emptyCard}>
@@ -58,8 +76,6 @@ export default function ReviewScreen({
     );
   }
 
-  const card = queue[index];
-
   function handleGrade(correct) {
     onGrade(card, correct);
     if (index + 1 >= queue.length) {
@@ -87,6 +103,25 @@ export default function ReviewScreen({
         </View>
       </View>
 
+      {/* Audio-first mode toggle */}
+      <Pressable
+        onPress={onToggleAudioFirst}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: audioFirst }}
+        accessibilityLabel="Audio-first mode: hear each card before seeing the romanization"
+        style={[s.modeToggle, audioFirst && s.modeToggleOn]}
+        hitSlop={6}
+      >
+        <Feather
+          name="headphones"
+          size={14}
+          color={audioFirst ? colors.accentDark : colors.textTertiary}
+        />
+        <Text style={[s.modeText, audioFirst && s.modeTextOn]}>
+          Audio-first {audioFirst ? "on" : "off"}
+        </Text>
+      </Pressable>
+
       {/* Card (tap to reveal) */}
       <Pressable
         style={s.card}
@@ -106,10 +141,10 @@ export default function ReviewScreen({
           style={s.speakBtn}
           hitSlop={10}
           accessibilityRole="button"
-          accessibilityLabel={`Play pronunciation of ${card.thai}`}
+          accessibilityLabel={showRoman ? `Play pronunciation of ${card.thai}` : "Replay audio"}
         >
           <Feather name="volume-2" size={18} color={colors.textTertiary} />
-          <Text style={s.roman}>{card.roman}</Text>
+          <Text style={s.roman}>{showRoman ? card.roman : "tap to replay"}</Text>
         </Pressable>
 
         {revealed ? (
@@ -118,7 +153,9 @@ export default function ReviewScreen({
             {!!card.note && <Text style={s.note}>{card.note}</Text>}
           </View>
         ) : (
-          <Text style={s.tapHint}>Tap to reveal</Text>
+          <Text style={s.tapHint}>
+            {audioFirst ? "Listen, then tap to reveal" : "Tap to reveal"}
+          </Text>
         )}
       </Pressable>
 
@@ -172,6 +209,23 @@ const s = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3 },
   dotOn: { backgroundColor: colors.accent },
   dotOff: { backgroundColor: "#e5e5e5" },
+
+  modeToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    marginBottom: space.sm,
+  },
+  modeToggleOn: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
+  modeText: { fontSize: font.tiny, fontWeight: "500", color: colors.textTertiary },
+  modeTextOn: { color: colors.accentDark },
 
   card: {
     backgroundColor: colors.surface,
