@@ -17,6 +17,8 @@ import {
   countMastered,
   getListeningDates,
   resetDatabase,
+  getSetting,
+  setSetting,
 } from "./src/db/database";
 import { maybeSync } from "./src/lib/supabaseSync";
 import { hasThaiVoice } from "./src/lib/tts";
@@ -98,6 +100,7 @@ export default function App() {
   const [week, setWeek] = useState([]);
   const [nextDue, setNextDue] = useState(null);
   const [categories, setCategories] = useState([]);
+  const [audioFirst, setAudioFirst] = useState(false);
 
   const [reviewQueue, setReviewQueue] = useState([]);
   const [sessionDone, setSessionDone] = useState(false);
@@ -119,6 +122,7 @@ export default function App() {
     setWeek(computeWeek(new Set(listening), today));
     setNextDue(computeNextDue(deck, today));
     setCategories(computeCategoryMastery(deck));
+    setAudioFirst((await getSetting("audioFirst", "0")) === "1");
   }
 
   // Boot: open the DB, run migrations, load derived state. If anything throws
@@ -173,6 +177,12 @@ export default function App() {
 
   async function gradeCard(card, correct) {
     await recordReview(card.id, card.box, correct, today);
+  }
+
+  async function toggleAudioFirst() {
+    const next = !audioFirst;
+    setAudioFirst(next); // optimistic; persists below
+    await setSetting("audioFirst", next ? "1" : "0");
   }
 
   async function finishSession() {
@@ -266,6 +276,8 @@ export default function App() {
               queue={reviewQueue}
               sessionDone={sessionDone}
               dueCount={dueCount}
+              audioFirst={audioFirst}
+              onToggleAudioFirst={toggleAudioFirst}
               onGrade={gradeCard}
               onStart={startReview}
               onReplayDone={finishSession}

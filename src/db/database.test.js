@@ -151,6 +151,41 @@ describe("review + mastery", () => {
   });
 });
 
+describe("settings (v2 migration)", () => {
+  it("returns the fallback before a setting is written", async () => {
+    setupFixture([card("a", 0)]);
+    await db.initDatabase();
+    expect(await db.getSetting("audioFirst", "0")).toBe("0");
+  });
+
+  it("round-trips a setting and survives a deck re-sync", async () => {
+    setupFixture([card("a", 0)]);
+    await db.initDatabase();
+
+    await db.setSetting("audioFirst", "1");
+    expect(await db.getSetting("audioFirst", "0")).toBe("1");
+
+    // A relaunch re-syncs the deck; settings live in their own table and persist.
+    await db.syncSeedDeck();
+    expect(await db.getSetting("audioFirst", "0")).toBe("1");
+  });
+
+  it("coerces non-string values to text on write", async () => {
+    setupFixture([card("a", 0)]);
+    await db.initDatabase();
+    await db.setSetting("n", 42);
+    expect(await db.getSetting("n")).toBe("42");
+  });
+
+  it("clears settings on a full reset", async () => {
+    setupFixture([card("a", 0)]);
+    await db.initDatabase();
+    await db.setSetting("audioFirst", "1");
+    await db.resetDatabase();
+    expect(await db.getSetting("audioFirst", "0")).toBe("0");
+  });
+});
+
 describe("daily log", () => {
   it("round-trips a block and reports listening dates", async () => {
     setupFixture([card("a", 0)]);
