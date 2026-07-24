@@ -25,10 +25,15 @@ import {
 import { maybeSync } from "./src/lib/supabaseSync";
 import { hasThaiVoice } from "./src/lib/tts";
 import { buildLessonSteps } from "./src/lib/lessonSteps";
+import { shiftTime, TIME_STEP_MINUTES } from "./src/lib/reminderTimes";
+import { rearmReminders, requestReminderPermission } from "./src/lib/notifications";
+import { buildDrillRounds } from "./src/lib/toneDrill";
+import { TONE_SETS } from "./src/data/tonePairs";
 import TodayScreen from "./src/components/TodayScreen";
 import ReviewScreen from "./src/components/ReviewScreen";
 import PathScreen from "./src/components/PathScreen";
 import LessonScreen from "./src/components/LessonScreen";
+import ToneDrillScreen from "./src/components/ToneDrillScreen";
 
 // Streak = consecutive days the protected Listening block was done, ending
 // today (or yesterday, so it doesn't drop to 0 before you've studied today).
@@ -114,6 +119,10 @@ export default function App() {
   const [completedLessons, setCompletedLessons] = useState(new Set());
   const [activeLesson, setActiveLesson] = useState(null); // { lesson, steps } while mid-lesson
 
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState("19:00");
+  const [toneDrill, setToneDrill] = useState(null); // rounds array while drilling
+
   const today = todayStr();
 
   // Pull all derived state out of SQLite. Cheap (tiny dataset), so we just
@@ -137,6 +146,8 @@ export default function App() {
     setCategories(computeCategoryMastery(unlocked));
     setCompletedLessons(new Set(await getCompletedLessons()));
     setAudioFirst((await getSetting("audioFirst", "0")) === "1");
+    setReminderEnabled((await getSetting("reminderEnabled", "0")) === "1");
+    setReminderTime(await getSetting("reminderTime", "19:00"));
   }
 
   // Boot: open the DB, run migrations, load derived state. If anything throws
@@ -175,6 +186,33 @@ export default function App() {
     boot(); // run once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Keep the scheduled notifications in sync with reality: settings changes
+  // and Listening completions both reshape the next 7 days of reminders.
+  useEffect(() => {
+    if (!ready) return;
+    rearmReminders({
+      enabled: reminderEnabled,
+      time: reminderTime,
+      listeningDoneToday: log.listening,
+    });
+  }, [ready, reminderEnabled, reminderTime, log.listening]);
+
+  async function toggleReminder() {
+    if (!reminderEnabled) {
+      const granted = await requestReminderPermission();
+      if (!granted) return; // OS said no; leave the toggle off
+    }
+    const next = !reminderEnabled;
+    setReminderEnabled(next);
+    await setSetting("reminderEnabled", next ? "1" : "0");
+  }
+
+  async function shiftReminderTime(direction) {
+    const next = shiftTime(reminderTime, direction * TIME_STEP_MINUTES);
+    setReminderTime(next);
+    await setSetting("reminderTime", next);
+  }
 
   async function toggleBlock(key) {
     await setBlock(today, key, !log[key]);
@@ -222,6 +260,10 @@ export default function App() {
     await loadAll();
   }
 
+  function startToneDrill() {
+    setToneDrill(buildDrillRounds(TONE_SETS));
+  }
+
   if (error) {
     return (
       <View style={s.loading}>
@@ -258,6 +300,18 @@ export default function App() {
       <View style={s.loading} accessibilityLabel="Loading">
         <ActivityIndicator color={colors.accent} />
       </View>
+    );
+  }
+
+  // The tone drill takes over the whole screen, same as a lesson.
+  if (toneDrill) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
+          <StatusBar style="dark" />
+          <ToneDrillScreen rounds={toneDrill} onDone={() => setToneDrill(null)} />
+        </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
@@ -321,8 +375,13 @@ export default function App() {
               week={week}
               nextDue={nextDue}
               categories={categories}
+              reminderEnabled={reminderEnabled}
+              reminderTime={reminderTime}
               onToggle={toggleBlock}
               onStartReview={startReview}
+              onStartToneDrill={startToneDrill}
+              onToggleReminder={toggleReminder}
+              onShiftReminderTime={shiftReminderTime}
             />
           )}
           {view === "learn" && (

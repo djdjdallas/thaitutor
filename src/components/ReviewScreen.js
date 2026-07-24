@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { colors, space, radius, shadow, font } from "../theme";
 import { speakThai } from "../lib/tts";
+import PronunciationGuide, { GuideTrigger } from "./PronunciationGuide";
 
 // `queue` is the list of due cards for this session, passed in from App.
 // We track only the position + reveal state locally; grading bubbles up.
@@ -30,6 +31,7 @@ export default function ReviewScreen({
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
   const [relearn, setRelearn] = useState([]); // missed cards, re-drilled at the end
+  const [showGuide, setShowGuide] = useState(false);
 
   const inSession = !!queue && queue.length > 0 && !sessionDone;
   const combined = inSession ? [...queue, ...relearn] : [];
@@ -158,24 +160,29 @@ export default function ReviewScreen({
         </View>
       </View>
 
-      {/* Audio-first mode toggle */}
-      <Pressable
-        onPress={onToggleAudioFirst}
-        accessibilityRole="switch"
-        accessibilityState={{ checked: audioFirst }}
-        accessibilityLabel="Audio-first mode: hear each card before seeing the romanization"
-        style={[s.modeToggle, audioFirst && s.modeToggleOn]}
-        hitSlop={6}
-      >
-        <Feather
-          name="headphones"
-          size={14}
-          color={audioFirst ? colors.accentDark : colors.textTertiary}
-        />
-        <Text style={[s.modeText, audioFirst && s.modeTextOn]}>
-          Audio-first {audioFirst ? "on" : "off"}
-        </Text>
-      </Pressable>
+      <PronunciationGuide visible={showGuide} onClose={() => setShowGuide(false)} />
+
+      {/* Audio-first mode toggle + pronunciation guide */}
+      <View style={s.modeRow}>
+        <Pressable
+          onPress={onToggleAudioFirst}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: audioFirst }}
+          accessibilityLabel="Audio-first mode: hear each card before seeing the romanization"
+          style={[s.modeToggle, audioFirst && s.modeToggleOn]}
+          hitSlop={6}
+        >
+          <Feather
+            name="headphones"
+            size={14}
+            color={audioFirst ? colors.accentDark : colors.textTertiary}
+          />
+          <Text style={[s.modeText, audioFirst && s.modeTextOn]}>
+            Audio-first {audioFirst ? "on" : "off"}
+          </Text>
+        </Pressable>
+        <GuideTrigger onPress={() => setShowGuide(true)} />
+      </View>
 
       {/* Card (tap to reveal) */}
       <Pressable
@@ -275,6 +282,12 @@ const s = StyleSheet.create({
   dotOn: { backgroundColor: colors.accent },
   dotOff: { backgroundColor: "#e5e5e5" },
 
+  modeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: space.sm,
+  },
   modeToggle: {
     flexDirection: "row",
     alignItems: "center",
@@ -286,7 +299,6 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    marginBottom: space.sm,
   },
   modeToggleOn: { borderColor: colors.accentBorder, backgroundColor: colors.accentSoft },
   modeText: { fontSize: font.tiny, fontWeight: "500", color: colors.textTertiary },

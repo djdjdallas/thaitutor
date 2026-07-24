@@ -35,8 +35,13 @@ export default function TodayScreen({
   week = [],
   nextDue = null,
   categories = [],
+  reminderEnabled = false,
+  reminderTime = "19:00",
   onToggle,
   onStartReview,
+  onStartToneDrill,
+  onToggleReminder,
+  onShiftReminderTime,
 }) {
   const blocksDone = BLOCKS.filter((b) => log[b.key]).length;
   // Idle-state subtitle for the review nudge: lead with when the next batch
@@ -179,6 +184,82 @@ export default function TodayScreen({
             </Pressable>
           );
         })}
+      </View>
+
+      {/* Tone trainer: quick minimal-pair ear drill, separate from the blocks. */}
+      <Pressable
+        onPress={onStartToneDrill}
+        accessibilityRole="button"
+        accessibilityLabel="Tone trainer. A quick ear drill on tone pairs like far and near."
+        style={({ pressed }) => [
+          s.block,
+          { marginTop: space.sm },
+          pressed && { backgroundColor: colors.accentSoft },
+        ]}
+      >
+        <View style={[s.iconWrap, s.iconWrapIdle]}>
+          <MaterialCommunityIcons name="waveform" size={22} color={colors.textTertiary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.blockLabel}>Tone trainer</Text>
+          <Text style={s.blockSub}>2-min ear drill · glai or glâi — far or near?</Text>
+        </View>
+        <Feather name="chevron-right" size={20} color={colors.textTertiary} />
+      </Pressable>
+
+      {/* Daily reminder: local notification at a fixed time, skipped on days
+          Listening is already done. */}
+      <View style={[s.card, { marginTop: space.sm, marginBottom: 0 }]}>
+        <View style={s.reminderRow}>
+          <View style={[s.iconWrap, reminderEnabled ? s.iconWrapDone : s.iconWrapIdle]}>
+            <Feather
+              name="bell"
+              size={20}
+              color={reminderEnabled ? colors.accent : colors.textTertiary}
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.blockLabel}>Daily reminder</Text>
+            <Text style={s.blockSub}>
+              {reminderEnabled
+                ? `Nudges you at ${reminderTime} if Listening isn't done`
+                : "Get a nudge if Listening isn't done"}
+            </Text>
+          </View>
+          <Pressable
+            onPress={onToggleReminder}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: reminderEnabled }}
+            accessibilityLabel="Daily reminder"
+            hitSlop={8}
+            style={[s.checkbox, reminderEnabled && s.checkboxDone]}
+          >
+            {reminderEnabled && <Feather name="check" size={14} color="#fff" />}
+          </Pressable>
+        </View>
+        {reminderEnabled && (
+          <View style={s.timeRow}>
+            <Pressable
+              onPress={() => onShiftReminderTime(-1)}
+              accessibilityRole="button"
+              accessibilityLabel="Reminder 30 minutes earlier"
+              hitSlop={8}
+              style={s.timeBtn}
+            >
+              <Feather name="minus" size={16} color={colors.textSecondary} />
+            </Pressable>
+            <Text style={s.timeText}>{reminderTime}</Text>
+            <Pressable
+              onPress={() => onShiftReminderTime(1)}
+              accessibilityRole="button"
+              accessibilityLabel="Reminder 30 minutes later"
+              hitSlop={8}
+              style={s.timeBtn}
+            >
+              <Feather name="plus" size={16} color={colors.textSecondary} />
+            </Pressable>
+          </View>
+        )}
       </View>
 
       {/* Mastery by category: how much of each topic has reached the top box. */}
@@ -357,6 +438,35 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   checkboxDone: { backgroundColor: colors.accent, borderColor: colors.accent },
+
+  reminderRow: { flexDirection: "row", alignItems: "center", gap: 16 },
+  timeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 20,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSoft,
+  },
+  timeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  timeText: {
+    fontSize: font.h2,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    fontVariant: ["tabular-nums"],
+    minWidth: 64,
+    textAlign: "center",
+  },
 
   footnote: {
     fontSize: 12,

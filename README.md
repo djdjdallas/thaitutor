@@ -11,9 +11,12 @@ An offline-first Thai learning app with two loops:
   of dumping the whole deck on day one. Missed cards repeat at the end of the
   same session until you get them right.
 
-Plus the Today screen: 4 daily study blocks + streak. Everything lives in
-on-device SQLite, so it works with zero WiFi. Tap any card to hear it spoken, or
-flip on **audio-first** review to train your ear before your eyes.
+Plus the Today screen: 4 daily study blocks + streak, a **tone trainer**
+(minimal-pair ear drills — glai or glâi, far or near?), and an optional **daily
+reminder** notification that skips days you've already studied. Everything lives
+in on-device SQLite, so it works with zero WiFi. Tap any card to hear it spoken,
+flip on **audio-first** review to train your ear before your eyes, and tap
+"how to read this" anywhere for the tone-mark pronunciation guide.
 
 Built with Expo (managed workflow), JavaScript, expo-sqlite, expo-speech.
 
@@ -64,6 +67,7 @@ src/
     deck.js                 Merged card catalog with one global sort order
     lessons.js              The Learn path: units -> lessons -> card ids
     lessons.test.js         Content guardrails (ids exist, packs are exactly 100...)
+    tonePairs.js            Minimal-pair sets for the tone trainer (มา/หมา/ม้า...)
   db/database.js            SQLite schema, migrations, seeding, settings, queries
   db/database.test.js       DB tests against in-memory node:sqlite (expo mocked)
   lib/
@@ -73,13 +77,20 @@ src/
     srs.test.js             Unit tests for due-date + box promotion logic
     lessonSteps.js          Lesson step generator: teach/MCQ/audio/tiles (pure)
     lessonSteps.test.js     Unit tests for step generation + tile checking
+    toneDrill.js            Tone drill round builder (pure)
+    toneDrill.test.js       Unit tests for round building + tone-set data
+    reminderTimes.js        Reminder schedule date math (pure, local-time)
+    reminderTimes.test.js   Unit tests for time stepping + 7-day scheduling
+    notifications.js        expo-notifications wrapper (permissions, re-arming)
     tts.js                  expo-speech wrapper (Thai pronunciation playback)
     supabaseSync.js         STUB for Phase 2 cloud backup (RLS schema in comments)
   components/
-    TodayScreen.js          Streak, weekly dots, blocks, next-due, category mastery
+    TodayScreen.js          Streak, weekly dots, blocks, tone trainer, reminder
     PathScreen.js           The Learn path: units, sequential lesson unlocks
     LessonScreen.js         Full-screen lesson runner with instant feedback
     ReviewScreen.js         SRS flashcard flip + grading + relearn queue + audio-first
+    ToneDrillScreen.js      Hear-it-pick-it minimal-pair tone drill (10 rounds)
+    PronunciationGuide.js   "How to read the sounds" tone-mark legend (modal)
 ```
 
 ## Development
@@ -149,7 +160,11 @@ intentionally `prettier-ignore`d so it stays a scannable one-card-per-line layou
   packs; no in-app deck editing or import yet.
 - **Lesson progress isn't mid-lesson resumable.** Exiting a lesson discards that
   run (lessons are short by design); completed lessons are saved.
-- **No reminders/notifications.** The streak is a nudge, but nothing pings you.
+- **Reminders schedule 7 days ahead.** The daily reminder books concrete local
+  notifications for the next week (re-armed every launch and every block
+  toggle, skipping today once Listening is done). If the app isn't opened for
+  over a week, reminders pause until the next launch — a deliberate trade for
+  being able to skip already-studied days with zero background code.
 
 ## Release checklist
 

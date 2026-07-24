@@ -4,6 +4,7 @@ import { Feather } from "@expo/vector-icons";
 import { colors, space, radius, shadow, font } from "../theme";
 import { speakThai } from "../lib/tts";
 import { isTileOrderCorrect } from "../lib/lessonSteps";
+import PronunciationGuide, { GuideTrigger } from "./PronunciationGuide";
 
 // A full-screen lesson session: teach steps, then MCQ / audio / tile quizzes
 // with instant feedback. Every answer gets checked before you can move on,
@@ -19,6 +20,7 @@ export default function LessonScreen({ lesson, steps, onComplete, onExit }) {
   const [chosenTiles, setChosenTiles] = useState([]);
   const [checked, setChecked] = useState(false);
   const [correct, setCorrect] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   const step = steps[index];
 
@@ -106,8 +108,12 @@ export default function LessonScreen({ lesson, steps, onComplete, onExit }) {
         </Text>
       </View>
 
+      <PronunciationGuide visible={showGuide} onClose={() => setShowGuide(false)} />
+
       <ScrollView style={{ flex: 1 }} contentContainerStyle={s.body}>
-        {step.type === "teach" && <TeachStep card={step.card} />}
+        {step.type === "teach" && (
+          <TeachStep card={step.card} onShowGuide={() => setShowGuide(true)} />
+        )}
         {step.type === "mcq" && (
           <ChoiceStep
             prompt={`Which one means “${step.card.en}”?`}
@@ -203,7 +209,7 @@ export default function LessonScreen({ lesson, steps, onComplete, onExit }) {
 }
 
 // A new word: hear it, see it, read the note, move on.
-function TeachStep({ card }) {
+function TeachStep({ card, onShowGuide }) {
   return (
     <View style={s.teachCard}>
       <Text style={s.newWordTag}>NEW WORD</Text>
@@ -220,6 +226,9 @@ function TeachStep({ card }) {
       </Pressable>
       <Text style={s.teachEn}>{card.en}</Text>
       {!!card.note && <Text style={s.teachNote}>{card.note}</Text>}
+      <View style={{ marginTop: 14 }}>
+        <GuideTrigger onPress={onShowGuide} />
+      </View>
     </View>
   );
 }
