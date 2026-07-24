@@ -1,19 +1,29 @@
 # Thai Tutor — Phase 1
 
-An offline-first Thai learning app. Tracks your 4 daily study blocks + streak, and
-drills a seeded vocab deck with a Leitner spaced-repetition system. Everything lives
-in on-device SQLite, so it works with zero WiFi. Tap any card to hear it spoken, or
+An offline-first Thai learning app with two loops:
+
+- **Learn** — a Brilliant-style lesson path. Units of bite-sized interactive
+  lessons (hear the word, pick the meaning, rebuild the phrase from syllable
+  tiles) that teach ~240 cards: a starter deck plus **Top 100 Words** and
+  **Top 100 Phrases** packs.
+- **Review** — a Leitner spaced-repetition system. Finishing a lesson unlocks
+  its cards into the SRS rotation, so review load ramps up as you learn instead
+  of dumping the whole deck on day one. Missed cards repeat at the end of the
+  same session until you get them right.
+
+Plus the Today screen: 4 daily study blocks + streak. Everything lives in
+on-device SQLite, so it works with zero WiFi. Tap any card to hear it spoken, or
 flip on **audio-first** review to train your ear before your eyes.
 
 Built with Expo (managed workflow), JavaScript, expo-sqlite, expo-speech.
 
 ## Who it's for
 
-Beginner-to-early-intermediate learners who want a **daily habit loop** for Thai,
-not a course. The deck is ~42 survival words/phrases (greetings, food, numbers,
-getting around) with tone-marked romanization, aimed at travelers and new
-residents who need to be understood out loud, fast. If you want grammar drills or
-a huge dictionary, this isn't that — it's a streak + SRS + listening tracker.
+Beginner-to-early-intermediate learners who want a **daily habit loop** for Thai.
+The content is survival-focused (greetings, food, numbers, taxi, shopping,
+emergencies) with tone-marked romanization, aimed at travelers and new residents
+who need to be understood out loud, fast. If you want grammar theory or a huge
+dictionary, this isn't that — it's lessons + streak + SRS + listening.
 
 ## Screenshots
 
@@ -43,11 +53,17 @@ Then press `i` (iOS simulator), `a` (Android emulator), or scan the QR with Expo
 ## What's here
 
 ```
-App.js                      Root: DB init, state, tabs, streak math
+App.js                      Root: DB init, state, tabs, streak math, lesson session
 index.js                    Entry point
 src/
   theme.js                  Design tokens (neutral base + amber accent, 8px grid)
-  data/seedDeck.js          ~42 survival words/phrases, tone-marked (static content)
+  data/
+    seedDeck.js             ~42 starter words/phrases, tone-marked (static content)
+    words100.js             Top 100 Words pack (90 new cards; 10 shared w/ starter)
+    phrases100.js           Top 100 Phrases pack (94 new cards; 6 shared w/ starter)
+    deck.js                 Merged card catalog with one global sort order
+    lessons.js              The Learn path: units -> lessons -> card ids
+    lessons.test.js         Content guardrails (ids exist, packs are exactly 100...)
   db/database.js            SQLite schema, migrations, seeding, settings, queries
   db/database.test.js       DB tests against in-memory node:sqlite (expo mocked)
   lib/
@@ -55,11 +71,15 @@ src/
     dates.test.js           Unit tests for the date math
     srs.js                  Leitner box logic + due-date helper (pure functions)
     srs.test.js             Unit tests for due-date + box promotion logic
+    lessonSteps.js          Lesson step generator: teach/MCQ/audio/tiles (pure)
+    lessonSteps.test.js     Unit tests for step generation + tile checking
     tts.js                  expo-speech wrapper (Thai pronunciation playback)
     supabaseSync.js         STUB for Phase 2 cloud backup (RLS schema in comments)
   components/
     TodayScreen.js          Streak, weekly dots, blocks, next-due, category mastery
-    ReviewScreen.js         SRS flashcard flip + grading + speak + audio-first mode
+    PathScreen.js           The Learn path: units, sequential lesson unlocks
+    LessonScreen.js         Full-screen lesson runner with instant feedback
+    ReviewScreen.js         SRS flashcard flip + grading + relearn queue + audio-first
 ```
 
 ## Development
@@ -80,11 +100,21 @@ intentionally `prettier-ignore`d so it stays a scannable one-card-per-line layou
 ## Key design decisions (the "why")
 
 - **Content and progress are separate tables.** `cards` is static, trusted vocab.
-  `card_state` / `daily_log` is your progress. On every launch the deck content is
-  re-synced (UPSERT) from `seedDeck.js` while progress rows are left untouched
-  (`INSERT OR IGNORE`), so vocab fixes and new cards reach existing users without
-  wiping anyone's streak or SRS history. Schema changes go through versioned
-  migrations gated on SQLite's `user_version`.
+  `card_state` / `daily_log` / `lesson_progress` is your progress. On every launch
+  the deck content is re-synced (UPSERT) from the merged catalog in `deck.js`
+  while progress rows are left untouched (`INSERT OR IGNORE`), so vocab fixes and
+  new cards reach existing users without wiping anyone's streak or SRS history.
+  Schema changes go through versioned migrations gated on SQLite's `user_version`.
+- **Lessons gate the SRS.** Cards seed locked and unlock when their lesson is
+  completed, so review load trickles in as you learn instead of 240 cards being
+  due on install. Installs that predate the Learn path are grandfathered in by
+  the v3 migration (their existing cards stay unlocked). The Top-100 packs
+  reference starter-deck cards where they overlap (ไป, กิน, ไม่เผ็ด...), so each
+  pack is a true, de-duplicated 100 — enforced by tests.
+- **Lessons are data, the engine is one component.** A lesson is just an ordered
+  list of card ids; `lessonSteps.js` generates the teach/quiz sequence from the
+  cards themselves (tiles for 3+ syllable phrases, listening quizzes for short
+  words). Adding a unit is pure JSON authoring, no new UI.
 - **The app never dead-ends on a bad DB.** If init/migration throws, you get a
   recovery screen (retry, or reset-and-reseed) instead of a frozen spinner.
 - **Settings live in their own key/value table.** The audio-first preference
@@ -115,15 +145,20 @@ intentionally `prettier-ignore`d so it stays a scannable one-card-per-line layou
   tone-marked roman is a learning crutch and simplifies some vowels.
 - **Single device, no accounts.** Progress is local to the device. Cross-device
   backup is the Phase 2 Supabase sync (currently a stub).
-- **Small, fixed deck.** ~42 cards, no in-app deck editing or import yet.
+- **Fixed content.** ~240 curated cards across the starter deck and two Top-100
+  packs; no in-app deck editing or import yet.
+- **Lesson progress isn't mid-lesson resumable.** Exiting a lesson discards that
+  run (lessons are short by design); completed lessons are saved.
 - **No reminders/notifications.** The streak is a nudge, but nothing pings you.
 
 ## Release checklist
 
 - [ ] `npm test`, `npm run lint`, `npm run format:check` all green
 - [ ] Smoke-test on a physical iOS device and a physical Android device (TTS,
-      streak rollover at local midnight, DB recovery screen)
-- [ ] Confirm a fresh install seeds the deck and an upgrade preserves progress
+      streak rollover at local midnight, DB recovery screen, a lesson end-to-end
+      including tile + listening steps)
+- [ ] Confirm a fresh install seeds the deck locked (Review points at Learn) and
+      an upgrade preserves progress with existing cards still reviewable
 - [ ] Capture and commit the screenshots above
 - [ ] Bump `version` in `package.json` and `app.json`
 - [ ] Set app icon + splash in `assets/` and verify `app.json` config

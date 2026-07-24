@@ -7,6 +7,11 @@ import { speakThai } from "../lib/tts";
 // `queue` is the list of due cards for this session, passed in from App.
 // We track only the position + reveal state locally; grading bubbles up.
 //
+// Missed cards come back at the END of the same session (the relearn queue):
+// you don't leave until you've gotten every card right once. Only the first
+// encounter is graded — relearn repeats are drill, not double jeopardy for
+// the SRS box.
+//
 // Audio-first mode trains the ear before the eye: the card auto-plays its Thai
 // audio on arrival and the romanization stays hidden until you reveal, so you
 // can't lean on the roman spelling.
@@ -14,62 +19,99 @@ export default function ReviewScreen({
   queue,
   sessionDone,
   dueCount,
+  nothingUnlocked = false,
   audioFirst = false,
   onToggleAudioFirst,
   onGrade,
   onStart,
   onReplayDone,
+  onGoLearn,
 }) {
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [relearn, setRelearn] = useState([]); // missed cards, re-drilled at the end
 
   const inSession = !!queue && queue.length > 0 && !sessionDone;
-  const card = inSession ? queue[index] : null;
+  const combined = inSession ? [...queue, ...relearn] : [];
+  const card = inSession ? combined[index] : null;
+  const isRelearn = inSession && index >= queue.length;
 
   // Auto-play when a new card arrives (or when the user flips audio-first on).
   useEffect(() => {
     if (inSession && audioFirst && card) speakThai(card.thai);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card?.id, audioFirst, inSession]);
+  }, [card?.id, index, audioFirst, inSession]);
 
   // Hide the romanization until reveal in audio-first mode.
   const showRoman = !audioFirst || revealed;
 
-  // Empty / start / finished state.
+  // Empty / start / finished state. A brand-new install has nothing unlocked
+  // yet — point at the Learn path instead of promising cards tomorrow.
   if (!inSession) {
+    const showLearnNudge = nothingUnlocked && !sessionDone;
     return (
       <View style={s.centerWrap}>
         <View style={s.emptyCard}>
           <View style={s.emptyIcon}>
-            <Feather name={sessionDone ? "check" : "book-open"} size={24} color={colors.accent} />
+            <Feather
+              name={sessionDone ? "check" : showLearnNudge ? "map" : "book-open"}
+              size={24}
+              color={colors.accent}
+            />
           </View>
           <Text style={s.emptyTitle}>
-            {sessionDone ? "Session complete" : dueCount > 0 ? "Ready to review" : "Nothing due"}
+            {sessionDone
+              ? "Session complete"
+              : showLearnNudge
+                ? "Nothing unlocked yet"
+                : dueCount > 0
+                  ? "Ready to review"
+                  : "Nothing due"}
           </Text>
           <Text style={s.emptySub}>
             {sessionDone
               ? "Nice. Cards you knew moved up a box and will come back later."
-              : dueCount > 0
-                ? `${dueCount} cards waiting.`
-                : "Come back tomorrow for your next batch."}
+              : showLearnNudge
+                ? "Words enter review as you finish lessons. Do your first lesson on the Learn path to unlock your first batch."
+                : dueCount > 0
+                  ? `${dueCount} cards waiting.`
+                  : "Come back tomorrow for your next batch."}
           </Text>
-          {dueCount > 0 && (
+          {showLearnNudge ? (
             <Pressable
-              onPress={() => {
-                setIndex(0);
-                setRevealed(false);
-                onStart();
-              }}
+              onPress={onGoLearn}
               accessibilityRole="button"
-              accessibilityLabel={sessionDone ? "Review again" : "Start review"}
+              accessibilityLabel="Go to the Learn path"
               style={({ pressed }) => [
                 s.primaryBtn,
                 pressed && { backgroundColor: colors.accentDark },
               ]}
             >
-              <Feather name="rotate-ccw" size={16} color="#fff" />
-              <Text style={s.primaryBtnText}>{sessionDone ? "Review again" : "Start review"}</Text>
+              <Feather name="map" size={16} color="#fff" />
+              <Text style={s.primaryBtnText}>Go to Learn</Text>
             </Pressable>
+          ) : (
+            dueCount > 0 && (
+              <Pressable
+                onPress={() => {
+                  setIndex(0);
+                  setRevealed(false);
+                  setRelearn([]);
+                  onStart();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={sessionDone ? "Review again" : "Start review"}
+                style={({ pressed }) => [
+                  s.primaryBtn,
+                  pressed && { backgroundColor: colors.accentDark },
+                ]}
+              >
+                <Feather name="rotate-ccw" size={16} color="#fff" />
+                <Text style={s.primaryBtnText}>
+                  {sessionDone ? "Review again" : "Start review"}
+                </Text>
+              </Pressable>
+            )
           )}
         </View>
       </View>
@@ -77,8 +119,12 @@ export default function ReviewScreen({
   }
 
   function handleGrade(correct) {
-    onGrade(card, correct);
-    if (index + 1 >= queue.length) {
+    // Grade only first encounters; relearn repeats don't touch the SRS box.
+    if (!isRelearn) onGrade(card, correct);
+    // Any miss (even during relearn) sends the card to the back of the line.
+    const nextRelearn = correct ? relearn : [...relearn, card];
+    if (!correct) setRelearn(nextRelearn);
+    if (index + 1 >= queue.length + nextRelearn.length) {
       onReplayDone(); // signals App to mark the session finished + vocab block done
     } else {
       setIndex(index + 1);
@@ -88,11 +134,20 @@ export default function ReviewScreen({
 
   return (
     <View style={s.wrap}>
-      {/* Progress + box indicator */}
+      {/* Progress + box indicator. The total grows as misses join the relearn
+          queue — the session isn't over until every card has been gotten right. */}
       <View style={s.progressRow}>
-        <Text style={s.muted}>
-          {index + 1} / {queue.length}
-        </Text>
+        <View style={s.boxRow}>
+          <Text style={s.muted}>
+            {index + 1} / {combined.length}
+          </Text>
+          {isRelearn && (
+            <View style={s.relearnTag}>
+              <Feather name="rotate-ccw" size={10} color={colors.accentDark} />
+              <Text style={s.relearnText}>relearn</Text>
+            </View>
+          )}
+        </View>
         <View style={s.boxRow}>
           <Text style={s.muted}>box {card.box}</Text>
           <View style={s.dots}>
@@ -205,6 +260,16 @@ const s = StyleSheet.create({
   },
   muted: { fontSize: font.small, color: colors.textTertiary },
   boxRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  relearnTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  relearnText: { fontSize: font.tiny, fontWeight: "600", color: colors.accentDark },
   dots: { flexDirection: "row", gap: 3 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   dotOn: { backgroundColor: colors.accent },

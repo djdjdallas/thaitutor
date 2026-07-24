@@ -19,11 +19,16 @@ import {
   resetDatabase,
   getSetting,
   setSetting,
+  getCompletedLessons,
+  completeLesson,
 } from "./src/db/database";
 import { maybeSync } from "./src/lib/supabaseSync";
 import { hasThaiVoice } from "./src/lib/tts";
+import { buildLessonSteps } from "./src/lib/lessonSteps";
 import TodayScreen from "./src/components/TodayScreen";
 import ReviewScreen from "./src/components/ReviewScreen";
+import PathScreen from "./src/components/PathScreen";
+import LessonScreen from "./src/components/LessonScreen";
 
 // Streak = consecutive days the protected Listening block was done, ending
 // today (or yesterday, so it doesn't drop to 0 before you've studied today).
@@ -105,23 +110,32 @@ export default function App() {
   const [reviewQueue, setReviewQueue] = useState([]);
   const [sessionDone, setSessionDone] = useState(false);
 
+  const [deck, setDeck] = useState([]);
+  const [completedLessons, setCompletedLessons] = useState(new Set());
+  const [activeLesson, setActiveLesson] = useState(null); // { lesson, steps } while mid-lesson
+
   const today = todayStr();
 
   // Pull all derived state out of SQLite. Cheap (tiny dataset), so we just
   // call this after any write rather than hand-tuning each piece of state.
+  // Progress numbers (total / mastery / categories) count only unlocked cards:
+  // the deck you're actually studying, not the whole locked catalog.
   async function loadAll() {
-    const deck = await getDeck();
+    const fullDeck = await getDeck();
+    const unlocked = fullDeck.filter((c) => c.unlocked);
     const due = await getDueCards(today);
     const todayLog = await getLog(today);
     const listening = await getListeningDates();
-    setTotal(deck.length);
+    setDeck(fullDeck);
+    setTotal(unlocked.length);
     setDueCount(due.length);
     setLog(todayLog);
     setStreak(computeStreak(listening, today));
     setMastered(await countMastered());
     setWeek(computeWeek(new Set(listening), today));
-    setNextDue(computeNextDue(deck, today));
-    setCategories(computeCategoryMastery(deck));
+    setNextDue(computeNextDue(unlocked, today));
+    setCategories(computeCategoryMastery(unlocked));
+    setCompletedLessons(new Set(await getCompletedLessons()));
     setAudioFirst((await getSetting("audioFirst", "0")) === "1");
   }
 
@@ -193,6 +207,21 @@ export default function App() {
     await loadAll();
   }
 
+  // Build the interactive step sequence for a lesson and go full-screen.
+  function startLesson(lesson) {
+    const byId = new Map(deck.map((c) => [c.id, c]));
+    const cards = lesson.cardIds.map((id) => byId.get(id)).filter(Boolean);
+    setActiveLesson({ lesson, steps: buildLessonSteps(cards, deck) });
+  }
+
+  // Lesson finished: record it and release its cards into the SRS rotation.
+  async function finishLesson(lesson) {
+    await completeLesson(lesson.id, today, lesson.cardIds);
+    await maybeSync();
+    setActiveLesson(null);
+    await loadAll();
+  }
+
   if (error) {
     return (
       <View style={s.loading}>
@@ -232,6 +261,24 @@ export default function App() {
     );
   }
 
+  // A lesson takes over the whole screen (no tabs) so there's exactly one
+  // thing to do: finish it or leave it.
+  if (activeLesson) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
+          <StatusBar style="dark" />
+          <LessonScreen
+            lesson={activeLesson.lesson}
+            steps={activeLesson.steps}
+            onComplete={finishLesson}
+            onExit={() => setActiveLesson(null)}
+          />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
@@ -246,6 +293,12 @@ export default function App() {
             label="Today"
           />
           <TabButton
+            active={view === "learn"}
+            onPress={() => setView("learn")}
+            icon="map"
+            label="Learn"
+          />
+          <TabButton
             active={view === "review"}
             onPress={() => {
               setSessionDone(false);
@@ -257,7 +310,7 @@ export default function App() {
         </View>
 
         <View style={{ flex: 1 }}>
-          {view === "today" ? (
+          {view === "today" && (
             <TodayScreen
               streak={streak}
               log={log}
@@ -271,16 +324,26 @@ export default function App() {
               onToggle={toggleBlock}
               onStartReview={startReview}
             />
-          ) : (
+          )}
+          {view === "learn" && (
+            <PathScreen
+              completedLessons={completedLessons}
+              unlockedCount={total}
+              onStartLesson={startLesson}
+            />
+          )}
+          {view === "review" && (
             <ReviewScreen
               queue={reviewQueue}
               sessionDone={sessionDone}
               dueCount={dueCount}
+              nothingUnlocked={total === 0}
               audioFirst={audioFirst}
               onToggleAudioFirst={toggleAudioFirst}
               onGrade={gradeCard}
               onStart={startReview}
               onReplayDone={finishSession}
+              onGoLearn={() => setView("learn")}
             />
           )}
         </View>

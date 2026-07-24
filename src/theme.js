@@ -22,6 +22,12 @@ export const colors = {
   accent: "#f59e0b",
   accentDark: "#d97706",
   accentSoft: "#fef3c7",
+
+  // Lesson feedback (right/wrong answers)
+  success: "#16a34a",
+  successSoft: "#dcfce7",
+  danger: "#dc2626",
+  dangerSoft: "#fee2e2",
 };
 
 // 8px spacing grid.

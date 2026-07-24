@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import * as SQLite from "expo-sqlite";
-import { SEED_DECK } from "../data/seedDeck";
+import { FULL_DECK } from "../data/deck";
 import { isDue, nextBox } from "../lib/srs";
 
 let db = null; // singleton connection
@@ -21,7 +21,7 @@ let db = null; // singleton connection
 // Schema version. Bump this and add a matching block in `runMigrations()`
 // whenever the table structure changes, so existing installs upgrade cleanly
 // instead of silently running against an old schema.
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 export async function initDatabase() {
   if (db) return db;
@@ -81,8 +81,25 @@ async function runMigrations() {
     `);
   }
 
+  if (version < 3) {
+    // The Learn path: cards start locked and enter the review rotation when
+    // their lesson is completed. Rows that exist at migration time belong to
+    // pre-path installs — grandfather them in as unlocked so nobody's due
+    // queue disappears. (Fresh installs migrate before seeding, so their
+    // cards seed locked.) `lesson_progress` records completed lessons.
+    await db.execAsync(`
+      ALTER TABLE card_state ADD COLUMN unlocked INTEGER NOT NULL DEFAULT 0;
+      UPDATE card_state SET unlocked = 1;
+
+      CREATE TABLE IF NOT EXISTS lesson_progress (
+        lesson_id TEXT PRIMARY KEY NOT NULL,
+        completed_at TEXT
+      );
+    `);
+  }
+
   // Future schema changes go here:
-  // if (version < 3) { await db.execAsync(`ALTER TABLE ...`); }
+  // if (version < 4) { await db.execAsync(`ALTER TABLE ...`); }
 
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
@@ -96,7 +113,7 @@ async function runMigrations() {
 //     history are never touched (only brand-new cards get a fresh box-1 state).
 export async function syncSeedDeck() {
   await db.withTransactionAsync(async () => {
-    for (const c of SEED_DECK) {
+    for (const c of FULL_DECK) {
       await db.runAsync(
         `INSERT INTO cards (id, thai, roman, en, note, category, sort)
          VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -125,6 +142,7 @@ export async function resetDatabase() {
     DROP TABLE IF EXISTS card_state;
     DROP TABLE IF EXISTS daily_log;
     DROP TABLE IF EXISTS settings;
+    DROP TABLE IF EXISTS lesson_progress;
     DROP TABLE IF EXISTS cards;
     PRAGMA user_version = 0;
   `);
@@ -156,17 +174,19 @@ export async function setSetting(key, value) {
 export async function getDeck() {
   return db.getAllAsync(`
     SELECT c.id, c.thai, c.roman, c.en, c.note, c.category,
-           s.box, s.last_reviewed
+           s.box, s.last_reviewed, s.unlocked
     FROM cards c
     JOIN card_state s ON s.card_id = c.id
     ORDER BY c.sort
   `);
 }
 
-// Cards due for review today (filtered with the SRS rule in JS).
+// Cards due for review today: unlocked by a lesson AND due per the SRS rule.
+// Locked cards are invisible to review — they enter the rotation the moment
+// their lesson is completed.
 export async function getDueCards(today) {
   const deck = await getDeck();
-  return deck.filter((card) => isDue(card, today));
+  return deck.filter((card) => card.unlocked && isDue(card, today));
 }
 
 // Grade a card: move it up or back, stamp today's date.
@@ -183,6 +203,29 @@ export async function recordReview(cardId, currentBox, correct, today) {
 export async function countMastered() {
   const row = await db.getFirstAsync("SELECT COUNT(*) AS n FROM card_state WHERE box >= 5");
   return row ? row.n : 0;
+}
+
+// --- Lesson progress (the Learn path) --------------------------------------
+
+// Ids of every completed lesson, for computing path state.
+export async function getCompletedLessons() {
+  const rows = await db.getAllAsync("SELECT lesson_id FROM lesson_progress");
+  return rows.map((r) => r.lesson_id);
+}
+
+// Finish a lesson: record it and unlock its cards into the review rotation.
+// Re-completing a lesson (replaying it) keeps the original completion date and
+// is harmless to already-unlocked cards.
+export async function completeLesson(lessonId, date, cardIds) {
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      "INSERT OR IGNORE INTO lesson_progress (lesson_id, completed_at) VALUES (?, ?)",
+      [lessonId, date]
+    );
+    for (const id of cardIds) {
+      await db.runAsync("UPDATE card_state SET unlocked = 1 WHERE card_id = ?", [id]);
+    }
+  });
 }
 
 // --- Daily log queries -----------------------------------------------------
