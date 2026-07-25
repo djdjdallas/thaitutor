@@ -265,6 +265,51 @@ describe("card unlocking + lesson progress (v3 migration)", () => {
   });
 });
 
+describe("review history + stats (v4 migration)", () => {
+  it("logs every grade and reports totals + per-day counts", async () => {
+    setupFixture([card("a", 0), card("b", 1)]);
+    await db.initDatabase();
+
+    await db.recordReview("a", 1, true, "2024-06-23");
+    await db.recordReview("b", 1, false, "2024-06-23");
+    await db.recordReview("a", 2, true, "2024-06-24");
+
+    expect(await db.getReviewTotals()).toEqual({ total: 3, correct: 2 });
+
+    const daily = await db.getDailyReviewCounts("2024-06-23");
+    expect(daily).toEqual([
+      { date: "2024-06-23", total: 2, correct: 1 },
+      { date: "2024-06-24", total: 1, correct: 1 },
+    ]);
+
+    // fromDate filters older history out.
+    expect(await db.getDailyReviewCounts("2024-06-24")).toHaveLength(1);
+  });
+
+  it("reports the box distribution of unlocked cards only", async () => {
+    setupFixture([card("a", 0), card("b", 1), card("c", 2)]);
+    await db.initDatabase();
+    await db.completeLesson("l1", "2024-06-23", ["a", "b"]); // c stays locked
+
+    await db.recordReview("a", 1, true, "2024-06-23"); // a -> box 2
+
+    expect(await db.getBoxDistribution()).toEqual({ 1: 1, 2: 1, 3: 0, 4: 0, 5: 0 });
+  });
+
+  it("round-trips freeze days idempotently and clears them on reset", async () => {
+    setupFixture([card("a", 0)]);
+    await db.initDatabase();
+
+    await db.addFreezeDay("2024-06-22");
+    await db.addFreezeDay("2024-06-22"); // duplicate is a no-op
+    expect(await db.getFreezeDates()).toEqual(["2024-06-22"]);
+
+    await db.resetDatabase();
+    expect(await db.getFreezeDates()).toEqual([]);
+    expect(await db.getReviewTotals()).toEqual({ total: 0, correct: 0 });
+  });
+});
+
 describe("daily log", () => {
   it("round-trips a block and reports listening dates", async () => {
     setupFixture([card("a", 0)]);

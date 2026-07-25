@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors, space, radius, shadow, font } from "../theme";
 import { speakThai } from "../lib/tts";
+import { answerFeedback } from "../lib/haptics";
 
 // The tone trainer: hear one word from a minimal-pair set, pick which it was.
 // This drills the ONE thing romanization can't carry — your ear for tones —
@@ -25,8 +26,10 @@ export default function ToneDrillScreen({ rounds, onDone }) {
 
   function pick(word) {
     if (picked) return;
+    const right = word.thai === round.answer.thai;
     setPicked(word);
-    if (word.thai === round.answer.thai) setScore(score + 1);
+    answerFeedback(right);
+    if (right) setScore(score + 1);
   }
 
   function next() {

@@ -3,6 +3,7 @@ import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { colors, space, radius, shadow, font } from "../theme";
 import { speakThai } from "../lib/tts";
+import { answerFeedback } from "../lib/haptics";
 import { isTileOrderCorrect } from "../lib/lessonSteps";
 import PronunciationGuide, { GuideTrigger } from "./PronunciationGuide";
 
@@ -47,16 +48,20 @@ export default function LessonScreen({ lesson, steps, onComplete, onExit }) {
 
   function checkChoice(option) {
     if (checked) return;
+    const right = option.id === step.card.id;
     setSelectedId(option.id);
     setChecked(true);
-    setCorrect(option.id === step.card.id);
+    setCorrect(right);
+    answerFeedback(right);
     speakThai(step.card.thai);
   }
 
   function checkTiles() {
     if (checked) return;
+    const right = isTileOrderCorrect(chosenTiles, step.card);
     setChecked(true);
-    setCorrect(isTileOrderCorrect(chosenTiles, step.card));
+    setCorrect(right);
+    answerFeedback(right);
     speakThai(step.card.thai);
   }
 

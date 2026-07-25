@@ -21,7 +21,7 @@ let db = null; // singleton connection
 // Schema version. Bump this and add a matching block in `runMigrations()`
 // whenever the table structure changes, so existing installs upgrade cleanly
 // instead of silently running against an old schema.
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 export async function initDatabase() {
   if (db) return db;
@@ -98,8 +98,30 @@ async function runMigrations() {
     `);
   }
 
+  if (version < 4) {
+    // `review_log` records every grade as it happens — the raw material for
+    // the Stats screen (accuracy, activity). Append-only and tiny (a row is
+    // ~30 bytes; a heavy year of study is under 1 MB).
+    // `streak_freezes` records days the streak-protection bridged: a freeze
+    // day is NOT a lie that you studied, it's an explicit "excused absence"
+    // kept separate from daily_log so the honest record stays honest.
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS review_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        card_id TEXT NOT NULL,
+        date TEXT NOT NULL,
+        correct INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_review_log_date ON review_log(date);
+
+      CREATE TABLE IF NOT EXISTS streak_freezes (
+        date TEXT PRIMARY KEY NOT NULL
+      );
+    `);
+  }
+
   // Future schema changes go here:
-  // if (version < 4) { await db.execAsync(`ALTER TABLE ...`); }
+  // if (version < 5) { await db.execAsync(`ALTER TABLE ...`); }
 
   await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
 }
@@ -143,6 +165,8 @@ export async function resetDatabase() {
     DROP TABLE IF EXISTS daily_log;
     DROP TABLE IF EXISTS settings;
     DROP TABLE IF EXISTS lesson_progress;
+    DROP TABLE IF EXISTS review_log;
+    DROP TABLE IF EXISTS streak_freezes;
     DROP TABLE IF EXISTS cards;
     PRAGMA user_version = 0;
   `);
@@ -189,13 +213,19 @@ export async function getDueCards(today) {
   return deck.filter((card) => card.unlocked && isDue(card, today));
 }
 
-// Grade a card: move it up or back, stamp today's date.
+// Grade a card: move it up or back, stamp today's date, and append to the
+// review history (the Stats screen's raw data).
 export async function recordReview(cardId, currentBox, correct, today) {
   const box = nextBox(currentBox, correct);
   await db.runAsync("UPDATE card_state SET box = ?, last_reviewed = ? WHERE card_id = ?", [
     box,
     today,
     cardId,
+  ]);
+  await db.runAsync("INSERT INTO review_log (card_id, date, correct) VALUES (?, ?, ?)", [
+    cardId,
+    today,
+    correct ? 1 : 0,
   ]);
   return box;
 }
@@ -226,6 +256,46 @@ export async function completeLesson(lessonId, date, cardIds) {
       await db.runAsync("UPDATE card_state SET unlocked = 1 WHERE card_id = ?", [id]);
     }
   });
+}
+
+// --- Stats queries ---------------------------------------------------------
+
+// Lifetime totals: reviews graded and how many were right.
+export async function getReviewTotals() {
+  const row = await db.getFirstAsync(
+    "SELECT COUNT(*) AS total, COALESCE(SUM(correct), 0) AS correct FROM review_log"
+  );
+  return { total: row?.total || 0, correct: row?.correct || 0 };
+}
+
+// Per-day review counts since `fromDate` (inclusive): [{date, total, correct}].
+export async function getDailyReviewCounts(fromDate) {
+  return db.getAllAsync(
+    `SELECT date, COUNT(*) AS total, COALESCE(SUM(correct), 0) AS correct
+     FROM review_log WHERE date >= ? GROUP BY date ORDER BY date`,
+    [fromDate]
+  );
+}
+
+// How many unlocked cards sit in each Leitner box: {1: n, ..., 5: n}.
+export async function getBoxDistribution() {
+  const rows = await db.getAllAsync(
+    "SELECT box, COUNT(*) AS n FROM card_state WHERE unlocked = 1 GROUP BY box"
+  );
+  const out = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  for (const r of rows) out[r.box] = r.n;
+  return out;
+}
+
+// --- Streak freezes --------------------------------------------------------
+
+export async function getFreezeDates() {
+  const rows = await db.getAllAsync("SELECT date FROM streak_freezes");
+  return rows.map((r) => r.date);
+}
+
+export async function addFreezeDay(date) {
+  await db.runAsync("INSERT OR IGNORE INTO streak_freezes (date) VALUES (?)", [date]);
 }
 
 // --- Daily log queries -----------------------------------------------------

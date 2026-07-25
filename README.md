@@ -15,9 +15,13 @@ An offline-first Thai learning app with two loops:
   I say...?" moment. Search ignores tone marks ("mai" finds mâi and mài), and
   every row plays its audio on tap.
 
-Plus the Today screen: 4 daily study blocks + streak, a **tone trainer**
-(minimal-pair ear drills — glai or glâi, far or near?), and an optional **daily
-reminder** notification that skips days you've already studied. Everything lives
+Plus the Today screen: 4 daily study blocks + streak with **freeze tokens**
+(earn one per 7-day streak, banked up to 2; a single missed day is bridged
+automatically instead of zeroing you), a **tone trainer** (minimal-pair ear
+drills — glai or glâi, far or near?), a **Stats screen** (accuracy, activity,
+box distribution, 8-week listening heatmap), and an optional **daily reminder**
+notification that skips days you've already studied. Answers give haptic
+feedback everywhere. Everything lives
 in on-device SQLite, so it works with zero WiFi. Tap any card to hear it spoken,
 flip on **audio-first** review to train your ear before your eyes, and tap
 "how to read this" anywhere for the tone-mark pronunciation guide.
@@ -85,6 +89,9 @@ src/
     toneDrill.test.js       Unit tests for round building + tone-set data
     deckSearch.js           Tone-mark-insensitive deck search (pure)
     deckSearch.test.js      Unit tests for normalization + matching
+    streak.js               Streak + freeze-token math (pure)
+    streak.test.js          Unit tests for streaks, bridging, freeze earning
+    haptics.js              Best-effort answer feedback (expo-haptics)
     reminderTimes.js        Reminder schedule date math (pure, local-time)
     reminderTimes.test.js   Unit tests for time stepping + 7-day scheduling
     notifications.js        expo-notifications wrapper (permissions, re-arming)
@@ -96,6 +103,7 @@ src/
     LessonScreen.js         Full-screen lesson runner with instant feedback
     ReviewScreen.js         SRS flip + grading + relearn + audio-first + EN→TH mode
     DeckScreen.js           Searchable card browser with tap-to-hear
+    StatsScreen.js          Totals, 14-day activity, box distribution, heatmap
     ToneDrillScreen.js      Hear-it-pick-it minimal-pair tone drill (10 rounds)
     PronunciationGuide.js   "How to read the sounds" tone-mark legend (modal)
 ```
@@ -142,6 +150,13 @@ intentionally `prettier-ignore`d so it stays a scannable one-card-per-line layou
   an optional backup that syncs when online (Phase 2), not a dependency.
 - **Streak is tied to the Listening block only.** It's the protected non-negotiable.
   Miss the other three on a chaotic day, keep the streak.
+- **Freezes forgive one day, honestly.** A freeze bridges exactly one missed
+  yesterday on a live streak — never two, never retroactively resurrecting a
+  dead streak. Frozen days are stored separately from the real study log
+  (`streak_freezes` vs `daily_log`), so the record of what you actually did
+  stays truthful; the streak number is the only thing being forgiven.
+- **Every grade is logged.** `review_log` is an append-only history feeding the
+  Stats screen — added early (v4) so the data accumulates from day one.
 - **Local-time dates.** We avoid `toISOString()` because UTC conversion can land
   your "today" on the wrong calendar day depending on timezone.
 

@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import { colors, space, radius, shadow, font } from "../theme";
 import { speakThai } from "../lib/tts";
+import { answerFeedback } from "../lib/haptics";
 import PronunciationGuide, { GuideTrigger } from "./PronunciationGuide";
 
 // `queue` is the list of due cards for this session, passed in from App.
@@ -136,6 +137,7 @@ export default function ReviewScreen({
   }
 
   function handleGrade(correct) {
+    answerFeedback(correct);
     // Grade only first encounters; relearn repeats don't touch the SRS box.
     if (!isRelearn) onGrade(card, correct);
     // Any miss (even during relearn) sends the card to the back of the line.

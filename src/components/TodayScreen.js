@@ -35,11 +35,13 @@ export default function TodayScreen({
   week = [],
   nextDue = null,
   categories = [],
+  freezeBank = 0,
   reminderEnabled = false,
   reminderTime = "19:00",
   onToggle,
   onStartReview,
   onStartToneDrill,
+  onOpenStats,
   onToggleReminder,
   onShiftReminderTime,
 }) {
@@ -58,15 +60,39 @@ export default function TodayScreen({
           <Text style={s.title}>เรียนภาษาไทย</Text>
           <Text style={s.subtitle}>Daily Thai tracker</Text>
         </View>
-        <View style={s.streakChip} accessibilityLabel={`${streak} day streak`}>
-          <MaterialCommunityIcons
-            name="fire"
-            size={20}
-            color={streak > 0 ? colors.accent : colors.textTertiary}
-          />
-          <View>
-            <Text style={s.streakNum}>{streak}</Text>
-            <Text style={s.streakLabel}>day streak</Text>
+        <View style={s.headerRight}>
+          <Pressable
+            onPress={onOpenStats}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Open your stats"
+            style={({ pressed }) => [s.statsBtn, pressed && { backgroundColor: colors.accentSoft }]}
+          >
+            <Feather name="bar-chart-2" size={18} color={colors.textSecondary} />
+          </Pressable>
+          <View
+            style={s.streakChip}
+            accessibilityLabel={`${streak} day streak${
+              freezeBank > 0
+                ? `, ${freezeBank} streak ${freezeBank === 1 ? "freeze" : "freezes"} banked`
+                : ""
+            }`}
+          >
+            <MaterialCommunityIcons
+              name="fire"
+              size={20}
+              color={streak > 0 ? colors.accent : colors.textTertiary}
+            />
+            <View>
+              <Text style={s.streakNum}>{streak}</Text>
+              <Text style={s.streakLabel}>day streak</Text>
+            </View>
+            {freezeBank > 0 && (
+              <View style={s.freezeChip}>
+                <MaterialCommunityIcons name="snowflake" size={12} color="#0284c7" />
+                <Text style={s.freezeCount}>{freezeBank}</Text>
+              </View>
+            )}
           </View>
         </View>
       </View>
@@ -109,10 +135,22 @@ export default function TodayScreen({
               <View
                 key={d.date}
                 style={s.weekCol}
-                accessibilityLabel={`${d.date}: ${d.done ? "done" : "missed"}`}
+                accessibilityLabel={`${d.date}: ${
+                  d.done ? "done" : d.frozen ? "covered by a streak freeze" : "missed"
+                }`}
               >
-                <View style={[s.weekDot, d.done && s.weekDotDone, d.isToday && s.weekDotToday]}>
+                <View
+                  style={[
+                    s.weekDot,
+                    d.done && s.weekDotDone,
+                    d.frozen && s.weekDotFrozen,
+                    d.isToday && s.weekDotToday,
+                  ]}
+                >
                   {d.done && <Feather name="check" size={12} color="#fff" />}
+                  {d.frozen && (
+                    <MaterialCommunityIcons name="snowflake" size={12} color="#0284c7" />
+                  )}
                 </View>
                 <Text style={[s.weekDay, d.isToday && s.weekDayToday]}>
                   {weekdayLetter(d.date)}
@@ -322,6 +360,28 @@ const s = StyleSheet.create({
   },
   streakNum: { fontSize: 18, fontWeight: "600", color: colors.textPrimary, lineHeight: 20 },
   streakLabel: { fontSize: font.tiny, color: colors.textTertiary },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  statsBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  freezeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    backgroundColor: "#e0f2fe",
+    borderRadius: radius.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 2,
+  },
+  freezeCount: { fontSize: font.tiny, fontWeight: "600", color: "#0284c7" },
 
   card: {
     backgroundColor: colors.surface,
@@ -368,6 +428,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   weekDotDone: { backgroundColor: colors.accent },
+  weekDotFrozen: { backgroundColor: "#e0f2fe" },
   weekDotToday: { borderWidth: 2, borderColor: colors.accentDark },
   weekDay: { fontSize: font.tiny, color: colors.textTertiary },
   weekDayToday: { color: colors.textPrimary, fontWeight: "600" },

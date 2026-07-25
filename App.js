@@ -7,6 +7,7 @@ import { Feather } from "@expo/vector-icons";
 import { colors, radius, font } from "./src/theme";
 import { todayStr, shiftDay, daysBetween } from "./src/lib/dates";
 import { isDue, dueDate, MAX_BOX } from "./src/lib/srs";
+import { computeStreak, computeWeek, findBridgeDay, freezeAward } from "./src/lib/streak";
 import {
   initDatabase,
   getDeck,
@@ -21,6 +22,11 @@ import {
   setSetting,
   getCompletedLessons,
   completeLesson,
+  getFreezeDates,
+  addFreezeDay,
+  getReviewTotals,
+  getDailyReviewCounts,
+  getBoxDistribution,
 } from "./src/db/database";
 import { maybeSync } from "./src/lib/supabaseSync";
 import { hasThaiVoice } from "./src/lib/tts";
@@ -35,32 +41,7 @@ import PathScreen from "./src/components/PathScreen";
 import LessonScreen from "./src/components/LessonScreen";
 import ToneDrillScreen from "./src/components/ToneDrillScreen";
 import DeckScreen from "./src/components/DeckScreen";
-
-// Streak = consecutive days the protected Listening block was done, ending
-// today (or yesterday, so it doesn't drop to 0 before you've studied today).
-function computeStreak(dates, today) {
-  const set = new Set(dates);
-  const done = (d) => set.has(d);
-  let cur = done(today) ? today : shiftDay(today, -1);
-  if (!done(cur)) return 0;
-  let count = 0;
-  while (done(cur)) {
-    count++;
-    cur = shiftDay(cur, -1);
-  }
-  return count;
-}
-
-// The last 7 days (oldest -> today) tagged with whether Listening was done, for
-// the weekly dot strip.
-function computeWeek(listeningSet, today) {
-  const out = [];
-  for (let i = 6; i >= 0; i--) {
-    const date = shiftDay(today, -i);
-    out.push({ date, done: listeningSet.has(date), isToday: i === 0 });
-  }
-  return out;
-}
+import StatsScreen from "./src/components/StatsScreen";
 
 // A friendly "when does the next card come back" label, or null if something is
 // already due (the nudge handles that case).
@@ -104,6 +85,7 @@ export default function App() {
     freeplay: false,
   });
   const [streak, setStreak] = useState(0);
+  const [freezeBank, setFreezeBank] = useState(0);
   const [dueCount, setDueCount] = useState(0);
   const [mastered, setMastered] = useState(0);
   const [total, setTotal] = useState(0);
@@ -124,6 +106,7 @@ export default function App() {
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderTime, setReminderTime] = useState("19:00");
   const [toneDrill, setToneDrill] = useState(null); // rounds array while drilling
+  const [statsData, setStatsData] = useState(null); // loaded on demand for the Stats screen
 
   const today = todayStr();
 
@@ -137,13 +120,31 @@ export default function App() {
     const due = await getDueCards(today);
     const todayLog = await getLog(today);
     const listening = await getListeningDates();
+    const freezes = await getFreezeDates();
+    const listeningSet = new Set(listening);
+    const freezeSet = new Set(freezes);
+    const covered = new Set([...listening, ...freezes]);
+    const streakNow = computeStreak(covered, today);
+
+    // Award any newly-crossed 7-day milestones (idempotent via the persisted
+    // high-water mark, so re-running loadAll never double-awards).
+    let bank = parseInt(await getSetting("freezeBank", "0"), 10) || 0;
+    const lastMilestone = parseInt(await getSetting("freezeMilestone", "0"), 10) || 0;
+    const { earned, milestone } = freezeAward(streakNow, lastMilestone, bank);
+    if (earned > 0 || milestone !== lastMilestone) {
+      bank += earned;
+      await setSetting("freezeMilestone", String(milestone));
+      await setSetting("freezeBank", String(bank));
+    }
+
     setDeck(fullDeck);
     setTotal(unlocked.length);
     setDueCount(due.length);
     setLog(todayLog);
-    setStreak(computeStreak(listening, today));
+    setStreak(streakNow);
+    setFreezeBank(bank);
     setMastered(await countMastered());
-    setWeek(computeWeek(new Set(listening), today));
+    setWeek(computeWeek(listeningSet, freezeSet, today));
     setNextDue(computeNextDue(unlocked, today));
     setCategories(computeCategoryMastery(unlocked));
     setCompletedLessons(new Set(await getCompletedLessons()));
@@ -151,6 +152,20 @@ export default function App() {
     setReminderEnabled((await getSetting("reminderEnabled", "0")) === "1");
     setReminderTime(await getSetting("reminderTime", "19:00"));
     setDirection(await getSetting("reviewDirection", "th-en"));
+  }
+
+  // One launch-time chance to save yesterday: if exactly one day is missing
+  // off the back of a live streak and a freeze is banked, spend it.
+  async function bridgeStreakGap() {
+    const listening = await getListeningDates();
+    const freezes = await getFreezeDates();
+    const covered = new Set([...listening, ...freezes]);
+    const bank = parseInt(await getSetting("freezeBank", "0"), 10) || 0;
+    const gap = findBridgeDay(covered, todayStr());
+    if (gap && bank > 0) {
+      await addFreezeDay(gap);
+      await setSetting("freezeBank", String(bank - 1));
+    }
   }
 
   // Boot: open the DB, run migrations, load derived state. If anything throws
@@ -161,6 +176,7 @@ export default function App() {
     setReady(false);
     try {
       await initDatabase();
+      await bridgeStreakGap(); // spend a banked freeze on a single missed day
       await loadAll();
       setReady(true);
       // Best-effort, non-blocking: warn if no Thai TTS voice is installed.
@@ -273,6 +289,21 @@ export default function App() {
     setToneDrill(buildDrillRounds(TONE_SETS));
   }
 
+  // Gather everything the Stats screen shows in one go, then go full-screen.
+  async function openStats() {
+    setStatsData({
+      totals: await getReviewTotals(),
+      daily: await getDailyReviewCounts(shiftDay(today, -13)),
+      boxes: await getBoxDistribution(),
+      listening: await getListeningDates(),
+      freezes: await getFreezeDates(),
+      today,
+      streak,
+      unlocked: total,
+      mastered,
+    });
+  }
+
   if (error) {
     return (
       <View style={s.loading}>
@@ -309,6 +340,18 @@ export default function App() {
       <View style={s.loading} accessibilityLabel="Loading">
         <ActivityIndicator color={colors.accent} />
       </View>
+    );
+  }
+
+  // Stats takes over the whole screen, same as a lesson.
+  if (statsData) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
+          <StatusBar style="dark" />
+          <StatsScreen stats={statsData} onClose={() => setStatsData(null)} />
+        </SafeAreaView>
+      </SafeAreaProvider>
     );
   }
 
@@ -390,11 +433,13 @@ export default function App() {
               week={week}
               nextDue={nextDue}
               categories={categories}
+              freezeBank={freezeBank}
               reminderEnabled={reminderEnabled}
               reminderTime={reminderTime}
               onToggle={toggleBlock}
               onStartReview={startReview}
               onStartToneDrill={startToneDrill}
+              onOpenStats={openStats}
               onToggleReminder={toggleReminder}
               onShiftReminderTime={shiftReminderTime}
             />
