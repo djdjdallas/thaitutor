@@ -16,13 +16,20 @@ import PronunciationGuide, { GuideTrigger } from "./PronunciationGuide";
 // Audio-first mode trains the ear before the eye: the card auto-plays its Thai
 // audio on arrival and the romanization stays hidden until you reveal, so you
 // can't lean on the roman spelling.
+//
+// Direction flips the whole exercise: TH→EN is recognition (see Thai, recall
+// the meaning); EN→TH is production (see English, say the Thai out loud, then
+// check). Production is harder and is what actually gets you understood —
+// the Thai plays on reveal so your attempt gets an immediate model answer.
 export default function ReviewScreen({
   queue,
   sessionDone,
   dueCount,
   nothingUnlocked = false,
   audioFirst = false,
+  direction = "th-en",
   onToggleAudioFirst,
+  onToggleDirection,
   onGrade,
   onStart,
   onReplayDone,
@@ -33,19 +40,27 @@ export default function ReviewScreen({
   const [relearn, setRelearn] = useState([]); // missed cards, re-drilled at the end
   const [showGuide, setShowGuide] = useState(false);
 
+  const reversed = direction === "en-th";
   const inSession = !!queue && queue.length > 0 && !sessionDone;
   const combined = inSession ? [...queue, ...relearn] : [];
   const card = inSession ? combined[index] : null;
   const isRelearn = inSession && index >= queue.length;
 
   // Auto-play when a new card arrives (or when the user flips audio-first on).
+  // Only in TH→EN: in production mode the audio IS the answer.
   useEffect(() => {
-    if (inSession && audioFirst && card) speakThai(card.thai);
+    if (inSession && audioFirst && !reversed && card) speakThai(card.thai);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card?.id, index, audioFirst, inSession]);
+  }, [card?.id, index, audioFirst, reversed, inSession]);
 
   // Hide the romanization until reveal in audio-first mode.
   const showRoman = !audioFirst || revealed;
+
+  // Revealing in production mode speaks the model answer.
+  function reveal() {
+    setRevealed(true);
+    if (reversed && card) speakThai(card.thai);
+  }
 
   // Empty / start / finished state. A brand-new install has nothing unlocked
   // yet — point at the Learn path instead of promising cards tomorrow.
@@ -162,62 +177,101 @@ export default function ReviewScreen({
 
       <PronunciationGuide visible={showGuide} onClose={() => setShowGuide(false)} />
 
-      {/* Audio-first mode toggle + pronunciation guide */}
+      {/* Mode toggles (direction + audio-first) + pronunciation guide */}
       <View style={s.modeRow}>
-        <Pressable
-          onPress={onToggleAudioFirst}
-          accessibilityRole="switch"
-          accessibilityState={{ checked: audioFirst }}
-          accessibilityLabel="Audio-first mode: hear each card before seeing the romanization"
-          style={[s.modeToggle, audioFirst && s.modeToggleOn]}
-          hitSlop={6}
-        >
-          <Feather
-            name="headphones"
-            size={14}
-            color={audioFirst ? colors.accentDark : colors.textTertiary}
-          />
-          <Text style={[s.modeText, audioFirst && s.modeTextOn]}>
-            Audio-first {audioFirst ? "on" : "off"}
-          </Text>
-        </Pressable>
+        <View style={s.modeGroup}>
+          <Pressable
+            onPress={onToggleDirection}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: reversed }}
+            accessibilityLabel={
+              reversed
+                ? "Production mode: see English, recall the Thai. Tap to switch to recognition."
+                : "Recognition mode: see Thai, recall the meaning. Tap to switch to production."
+            }
+            style={[s.modeToggle, reversed && s.modeToggleOn]}
+            hitSlop={6}
+          >
+            <Feather
+              name={reversed ? "corner-up-left" : "corner-up-right"}
+              size={14}
+              color={reversed ? colors.accentDark : colors.textTertiary}
+            />
+            <Text style={[s.modeText, reversed && s.modeTextOn]}>
+              {reversed ? "EN → TH" : "TH → EN"}
+            </Text>
+          </Pressable>
+          {!reversed && (
+            <Pressable
+              onPress={onToggleAudioFirst}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: audioFirst }}
+              accessibilityLabel="Audio-first mode: hear each card before seeing the romanization"
+              style={[s.modeToggle, audioFirst && s.modeToggleOn]}
+              hitSlop={6}
+            >
+              <Feather
+                name="headphones"
+                size={14}
+                color={audioFirst ? colors.accentDark : colors.textTertiary}
+              />
+              <Text style={[s.modeText, audioFirst && s.modeTextOn]}>
+                Audio-first {audioFirst ? "on" : "off"}
+              </Text>
+            </Pressable>
+          )}
+        </View>
         <GuideTrigger onPress={() => setShowGuide(true)} />
       </View>
 
-      {/* Card (tap to reveal) */}
+      {/* Card (tap to reveal). In production mode the front is English and
+          the Thai stays hidden until you've made your attempt out loud. */}
       <Pressable
         style={s.card}
-        onPress={() => setRevealed(true)}
+        onPress={reveal}
         accessibilityRole="button"
         accessibilityLabel={
-          revealed ? `${card.thai}, ${card.roman}` : "Thai card, tap to reveal the meaning"
+          revealed
+            ? `${card.thai}, ${card.roman}, ${card.en}`
+            : reversed
+              ? `${card.en}. Say it in Thai, then tap to check.`
+              : "Thai card, tap to reveal the meaning"
         }
       >
-        <Text style={s.thai}>{card.thai}</Text>
-
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation?.();
-            speakThai(card.thai);
-          }}
-          style={s.speakBtn}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel={showRoman ? `Play pronunciation of ${card.thai}` : "Replay audio"}
-        >
-          <Feather name="volume-2" size={18} color={colors.textTertiary} />
-          <Text style={s.roman}>{showRoman ? card.roman : "tap to replay"}</Text>
-        </Pressable>
-
-        {revealed ? (
-          <View style={s.answer}>
-            <Text style={s.en}>{card.en}</Text>
-            {!!card.note && <Text style={s.note}>{card.note}</Text>}
-          </View>
+        {reversed && !revealed ? (
+          <>
+            <Text style={s.enFront}>{card.en}</Text>
+            <Text style={s.tapHint}>Say it in Thai, then tap to check</Text>
+          </>
         ) : (
-          <Text style={s.tapHint}>
-            {audioFirst ? "Listen, then tap to reveal" : "Tap to reveal"}
-          </Text>
+          <>
+            <Text style={s.thai}>{card.thai}</Text>
+
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation?.();
+                speakThai(card.thai);
+              }}
+              style={s.speakBtn}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={showRoman ? `Play pronunciation of ${card.thai}` : "Replay audio"}
+            >
+              <Feather name="volume-2" size={18} color={colors.textTertiary} />
+              <Text style={s.roman}>{showRoman ? card.roman : "tap to replay"}</Text>
+            </Pressable>
+
+            {revealed ? (
+              <View style={s.answer}>
+                <Text style={s.en}>{card.en}</Text>
+                {!!card.note && <Text style={s.note}>{card.note}</Text>}
+              </View>
+            ) : (
+              <Text style={s.tapHint}>
+                {audioFirst ? "Listen, then tap to reveal" : "Tap to reveal"}
+              </Text>
+            )}
+          </>
         )}
       </Pressable>
 
@@ -243,12 +297,12 @@ export default function ReviewScreen({
         </View>
       ) : (
         <Pressable
-          onPress={() => setRevealed(true)}
+          onPress={reveal}
           accessibilityRole="button"
-          accessibilityLabel="Reveal the meaning"
+          accessibilityLabel={reversed ? "Check the Thai answer" : "Reveal the meaning"}
           style={({ pressed }) => [s.revealBtn, pressed && { backgroundColor: "#000" }]}
         >
-          <Text style={s.revealText}>Reveal</Text>
+          <Text style={s.revealText}>{reversed ? "Check" : "Reveal"}</Text>
         </Pressable>
       )}
     </View>
@@ -288,6 +342,7 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: space.sm,
   },
+  modeGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
   modeToggle: {
     flexDirection: "row",
     alignItems: "center",
@@ -323,6 +378,13 @@ const s = StyleSheet.create({
     color: colors.textPrimary,
     marginBottom: 12,
     textAlign: "center",
+  },
+  enFront: {
+    fontSize: 26,
+    fontWeight: "600",
+    color: colors.textPrimary,
+    textAlign: "center",
+    lineHeight: 36,
   },
   speakBtn: { flexDirection: "row", alignItems: "center", gap: 8 },
   roman: { fontSize: 18, color: colors.textTertiary },

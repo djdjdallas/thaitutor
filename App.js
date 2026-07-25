@@ -34,6 +34,7 @@ import ReviewScreen from "./src/components/ReviewScreen";
 import PathScreen from "./src/components/PathScreen";
 import LessonScreen from "./src/components/LessonScreen";
 import ToneDrillScreen from "./src/components/ToneDrillScreen";
+import DeckScreen from "./src/components/DeckScreen";
 
 // Streak = consecutive days the protected Listening block was done, ending
 // today (or yesterday, so it doesn't drop to 0 before you've studied today).
@@ -111,6 +112,7 @@ export default function App() {
   const [nextDue, setNextDue] = useState(null);
   const [categories, setCategories] = useState([]);
   const [audioFirst, setAudioFirst] = useState(false);
+  const [direction, setDirection] = useState("th-en"); // review: recognition or production
 
   const [reviewQueue, setReviewQueue] = useState([]);
   const [sessionDone, setSessionDone] = useState(false);
@@ -148,6 +150,7 @@ export default function App() {
     setAudioFirst((await getSetting("audioFirst", "0")) === "1");
     setReminderEnabled((await getSetting("reminderEnabled", "0")) === "1");
     setReminderTime(await getSetting("reminderTime", "19:00"));
+    setDirection(await getSetting("reviewDirection", "th-en"));
   }
 
   // Boot: open the DB, run migrations, load derived state. If anything throws
@@ -235,6 +238,12 @@ export default function App() {
     const next = !audioFirst;
     setAudioFirst(next); // optimistic; persists below
     await setSetting("audioFirst", next ? "1" : "0");
+  }
+
+  async function toggleDirection() {
+    const next = direction === "th-en" ? "en-th" : "th-en";
+    setDirection(next); // optimistic; persists below
+    await setSetting("reviewDirection", next);
   }
 
   async function finishSession() {
@@ -361,6 +370,12 @@ export default function App() {
             icon="book-open"
             label={dueCount ? `Review (${dueCount})` : "Review"}
           />
+          <TabButton
+            active={view === "deck"}
+            onPress={() => setView("deck")}
+            icon="search"
+            label="Deck"
+          />
         </View>
 
         <View style={{ flex: 1 }}>
@@ -391,6 +406,7 @@ export default function App() {
               onStartLesson={startLesson}
             />
           )}
+          {view === "deck" && <DeckScreen deck={deck} />}
           {view === "review" && (
             <ReviewScreen
               queue={reviewQueue}
@@ -398,7 +414,9 @@ export default function App() {
               dueCount={dueCount}
               nothingUnlocked={total === 0}
               audioFirst={audioFirst}
+              direction={direction}
               onToggleAudioFirst={toggleAudioFirst}
+              onToggleDirection={toggleDirection}
               onGrade={gradeCard}
               onStart={startReview}
               onReplayDone={finishSession}

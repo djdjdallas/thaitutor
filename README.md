@@ -9,7 +9,11 @@ An offline-first Thai learning app with two loops:
 - **Review** — a Leitner spaced-repetition system. Finishing a lesson unlocks
   its cards into the SRS rotation, so review load ramps up as you learn instead
   of dumping the whole deck on day one. Missed cards repeat at the end of the
-  same session until you get them right.
+  same session until you get them right. Flip the direction toggle for
+  **production practice** (see English, say the Thai out loud, then check).
+- **Deck** — a searchable browser over the whole catalog for the "wait, how do
+  I say...?" moment. Search ignores tone marks ("mai" finds mâi and mài), and
+  every row plays its audio on tap.
 
 Plus the Today screen: 4 daily study blocks + streak, a **tone trainer**
 (minimal-pair ear drills — glai or glâi, far or near?), and an optional **daily
@@ -79,6 +83,8 @@ src/
     lessonSteps.test.js     Unit tests for step generation + tile checking
     toneDrill.js            Tone drill round builder (pure)
     toneDrill.test.js       Unit tests for round building + tone-set data
+    deckSearch.js           Tone-mark-insensitive deck search (pure)
+    deckSearch.test.js      Unit tests for normalization + matching
     reminderTimes.js        Reminder schedule date math (pure, local-time)
     reminderTimes.test.js   Unit tests for time stepping + 7-day scheduling
     notifications.js        expo-notifications wrapper (permissions, re-arming)
@@ -88,7 +94,8 @@ src/
     TodayScreen.js          Streak, weekly dots, blocks, tone trainer, reminder
     PathScreen.js           The Learn path: units, sequential lesson unlocks
     LessonScreen.js         Full-screen lesson runner with instant feedback
-    ReviewScreen.js         SRS flashcard flip + grading + relearn queue + audio-first
+    ReviewScreen.js         SRS flip + grading + relearn + audio-first + EN→TH mode
+    DeckScreen.js           Searchable card browser with tap-to-hear
     ToneDrillScreen.js      Hear-it-pick-it minimal-pair tone drill (10 rounds)
     PronunciationGuide.js   "How to read the sounds" tone-mark legend (modal)
 ```
