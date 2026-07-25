@@ -7,6 +7,7 @@ import { Feather } from "@expo/vector-icons";
 import { colors, radius, font } from "./src/theme";
 import { todayStr, shiftDay, daysBetween } from "./src/lib/dates";
 import { isDue, dueDate, MAX_BOX } from "./src/lib/srs";
+import { computeStreak, computeWeek, findBridgeDay, freezeAward } from "./src/lib/streak";
 import {
   initDatabase,
   getDeck,
@@ -19,37 +20,28 @@ import {
   resetDatabase,
   getSetting,
   setSetting,
+  getCompletedLessons,
+  completeLesson,
+  getFreezeDates,
+  addFreezeDay,
+  getReviewTotals,
+  getDailyReviewCounts,
+  getBoxDistribution,
 } from "./src/db/database";
 import { maybeSync } from "./src/lib/supabaseSync";
 import { hasThaiVoice } from "./src/lib/tts";
+import { buildLessonSteps } from "./src/lib/lessonSteps";
+import { shiftTime, TIME_STEP_MINUTES } from "./src/lib/reminderTimes";
+import { rearmReminders, requestReminderPermission } from "./src/lib/notifications";
+import { buildDrillRounds } from "./src/lib/toneDrill";
+import { TONE_SETS } from "./src/data/tonePairs";
 import TodayScreen from "./src/components/TodayScreen";
 import ReviewScreen from "./src/components/ReviewScreen";
-
-// Streak = consecutive days the protected Listening block was done, ending
-// today (or yesterday, so it doesn't drop to 0 before you've studied today).
-function computeStreak(dates, today) {
-  const set = new Set(dates);
-  const done = (d) => set.has(d);
-  let cur = done(today) ? today : shiftDay(today, -1);
-  if (!done(cur)) return 0;
-  let count = 0;
-  while (done(cur)) {
-    count++;
-    cur = shiftDay(cur, -1);
-  }
-  return count;
-}
-
-// The last 7 days (oldest -> today) tagged with whether Listening was done, for
-// the weekly dot strip.
-function computeWeek(listeningSet, today) {
-  const out = [];
-  for (let i = 6; i >= 0; i--) {
-    const date = shiftDay(today, -i);
-    out.push({ date, done: listeningSet.has(date), isToday: i === 0 });
-  }
-  return out;
-}
+import PathScreen from "./src/components/PathScreen";
+import LessonScreen from "./src/components/LessonScreen";
+import ToneDrillScreen from "./src/components/ToneDrillScreen";
+import DeckScreen from "./src/components/DeckScreen";
+import StatsScreen from "./src/components/StatsScreen";
 
 // A friendly "when does the next card come back" label, or null if something is
 // already due (the nudge handles that case).
@@ -93,6 +85,7 @@ export default function App() {
     freeplay: false,
   });
   const [streak, setStreak] = useState(0);
+  const [freezeBank, setFreezeBank] = useState(0);
   const [dueCount, setDueCount] = useState(0);
   const [mastered, setMastered] = useState(0);
   const [total, setTotal] = useState(0);
@@ -101,28 +94,78 @@ export default function App() {
   const [nextDue, setNextDue] = useState(null);
   const [categories, setCategories] = useState([]);
   const [audioFirst, setAudioFirst] = useState(false);
+  const [direction, setDirection] = useState("th-en"); // review: recognition or production
 
   const [reviewQueue, setReviewQueue] = useState([]);
   const [sessionDone, setSessionDone] = useState(false);
+
+  const [deck, setDeck] = useState([]);
+  const [completedLessons, setCompletedLessons] = useState(new Set());
+  const [activeLesson, setActiveLesson] = useState(null); // { lesson, steps } while mid-lesson
+
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState("19:00");
+  const [toneDrill, setToneDrill] = useState(null); // rounds array while drilling
+  const [statsData, setStatsData] = useState(null); // loaded on demand for the Stats screen
 
   const today = todayStr();
 
   // Pull all derived state out of SQLite. Cheap (tiny dataset), so we just
   // call this after any write rather than hand-tuning each piece of state.
+  // Progress numbers (total / mastery / categories) count only unlocked cards:
+  // the deck you're actually studying, not the whole locked catalog.
   async function loadAll() {
-    const deck = await getDeck();
+    const fullDeck = await getDeck();
+    const unlocked = fullDeck.filter((c) => c.unlocked);
     const due = await getDueCards(today);
     const todayLog = await getLog(today);
     const listening = await getListeningDates();
-    setTotal(deck.length);
+    const freezes = await getFreezeDates();
+    const listeningSet = new Set(listening);
+    const freezeSet = new Set(freezes);
+    const covered = new Set([...listening, ...freezes]);
+    const streakNow = computeStreak(covered, today);
+
+    // Award any newly-crossed 7-day milestones (idempotent via the persisted
+    // high-water mark, so re-running loadAll never double-awards).
+    let bank = parseInt(await getSetting("freezeBank", "0"), 10) || 0;
+    const lastMilestone = parseInt(await getSetting("freezeMilestone", "0"), 10) || 0;
+    const { earned, milestone } = freezeAward(streakNow, lastMilestone, bank);
+    if (earned > 0 || milestone !== lastMilestone) {
+      bank += earned;
+      await setSetting("freezeMilestone", String(milestone));
+      await setSetting("freezeBank", String(bank));
+    }
+
+    setDeck(fullDeck);
+    setTotal(unlocked.length);
     setDueCount(due.length);
     setLog(todayLog);
-    setStreak(computeStreak(listening, today));
+    setStreak(streakNow);
+    setFreezeBank(bank);
     setMastered(await countMastered());
-    setWeek(computeWeek(new Set(listening), today));
-    setNextDue(computeNextDue(deck, today));
-    setCategories(computeCategoryMastery(deck));
+    setWeek(computeWeek(listeningSet, freezeSet, today));
+    setNextDue(computeNextDue(unlocked, today));
+    setCategories(computeCategoryMastery(unlocked));
+    setCompletedLessons(new Set(await getCompletedLessons()));
     setAudioFirst((await getSetting("audioFirst", "0")) === "1");
+    setReminderEnabled((await getSetting("reminderEnabled", "0")) === "1");
+    setReminderTime(await getSetting("reminderTime", "19:00"));
+    setDirection(await getSetting("reviewDirection", "th-en"));
+  }
+
+  // One launch-time chance to save yesterday: if exactly one day is missing
+  // off the back of a live streak and a freeze is banked, spend it.
+  async function bridgeStreakGap() {
+    const listening = await getListeningDates();
+    const freezes = await getFreezeDates();
+    const covered = new Set([...listening, ...freezes]);
+    const bank = parseInt(await getSetting("freezeBank", "0"), 10) || 0;
+    const gap = findBridgeDay(covered, todayStr());
+    if (gap && bank > 0) {
+      await addFreezeDay(gap);
+      await setSetting("freezeBank", String(bank - 1));
+    }
   }
 
   // Boot: open the DB, run migrations, load derived state. If anything throws
@@ -133,6 +176,7 @@ export default function App() {
     setReady(false);
     try {
       await initDatabase();
+      await bridgeStreakGap(); // spend a banked freeze on a single missed day
       await loadAll();
       setReady(true);
       // Best-effort, non-blocking: warn if no Thai TTS voice is installed.
@@ -162,6 +206,33 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Keep the scheduled notifications in sync with reality: settings changes
+  // and Listening completions both reshape the next 7 days of reminders.
+  useEffect(() => {
+    if (!ready) return;
+    rearmReminders({
+      enabled: reminderEnabled,
+      time: reminderTime,
+      listeningDoneToday: log.listening,
+    });
+  }, [ready, reminderEnabled, reminderTime, log.listening]);
+
+  async function toggleReminder() {
+    if (!reminderEnabled) {
+      const granted = await requestReminderPermission();
+      if (!granted) return; // OS said no; leave the toggle off
+    }
+    const next = !reminderEnabled;
+    setReminderEnabled(next);
+    await setSetting("reminderEnabled", next ? "1" : "0");
+  }
+
+  async function shiftReminderTime(direction) {
+    const next = shiftTime(reminderTime, direction * TIME_STEP_MINUTES);
+    setReminderTime(next);
+    await setSetting("reminderTime", next);
+  }
+
   async function toggleBlock(key) {
     await setBlock(today, key, !log[key]);
     await maybeSync(); // no-op until Phase 2
@@ -185,12 +256,52 @@ export default function App() {
     await setSetting("audioFirst", next ? "1" : "0");
   }
 
+  async function toggleDirection() {
+    const next = direction === "th-en" ? "en-th" : "th-en";
+    setDirection(next); // optimistic; persists below
+    await setSetting("reviewDirection", next);
+  }
+
   async function finishSession() {
     await setBlock(today, "vocab", true); // completing review checks off the Vocab block
     await maybeSync();
     setSessionDone(true);
     setReviewQueue([]);
     await loadAll();
+  }
+
+  // Build the interactive step sequence for a lesson and go full-screen.
+  function startLesson(lesson) {
+    const byId = new Map(deck.map((c) => [c.id, c]));
+    const cards = lesson.cardIds.map((id) => byId.get(id)).filter(Boolean);
+    setActiveLesson({ lesson, steps: buildLessonSteps(cards, deck) });
+  }
+
+  // Lesson finished: record it and release its cards into the SRS rotation.
+  async function finishLesson(lesson) {
+    await completeLesson(lesson.id, today, lesson.cardIds);
+    await maybeSync();
+    setActiveLesson(null);
+    await loadAll();
+  }
+
+  function startToneDrill() {
+    setToneDrill(buildDrillRounds(TONE_SETS));
+  }
+
+  // Gather everything the Stats screen shows in one go, then go full-screen.
+  async function openStats() {
+    setStatsData({
+      totals: await getReviewTotals(),
+      daily: await getDailyReviewCounts(shiftDay(today, -13)),
+      boxes: await getBoxDistribution(),
+      listening: await getListeningDates(),
+      freezes: await getFreezeDates(),
+      today,
+      streak,
+      unlocked: total,
+      mastered,
+    });
   }
 
   if (error) {
@@ -232,6 +343,48 @@ export default function App() {
     );
   }
 
+  // Stats takes over the whole screen, same as a lesson.
+  if (statsData) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
+          <StatusBar style="dark" />
+          <StatsScreen stats={statsData} onClose={() => setStatsData(null)} />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
+  // The tone drill takes over the whole screen, same as a lesson.
+  if (toneDrill) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
+          <StatusBar style="dark" />
+          <ToneDrillScreen rounds={toneDrill} onDone={() => setToneDrill(null)} />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
+  // A lesson takes over the whole screen (no tabs) so there's exactly one
+  // thing to do: finish it or leave it.
+  if (activeLesson) {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
+          <StatusBar style="dark" />
+          <LessonScreen
+            lesson={activeLesson.lesson}
+            steps={activeLesson.steps}
+            onComplete={finishLesson}
+            onExit={() => setActiveLesson(null)}
+          />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
@@ -246,6 +399,12 @@ export default function App() {
             label="Today"
           />
           <TabButton
+            active={view === "learn"}
+            onPress={() => setView("learn")}
+            icon="map"
+            label="Learn"
+          />
+          <TabButton
             active={view === "review"}
             onPress={() => {
               setSessionDone(false);
@@ -254,10 +413,16 @@ export default function App() {
             icon="book-open"
             label={dueCount ? `Review (${dueCount})` : "Review"}
           />
+          <TabButton
+            active={view === "deck"}
+            onPress={() => setView("deck")}
+            icon="search"
+            label="Deck"
+          />
         </View>
 
         <View style={{ flex: 1 }}>
-          {view === "today" ? (
+          {view === "today" && (
             <TodayScreen
               streak={streak}
               log={log}
@@ -268,19 +433,39 @@ export default function App() {
               week={week}
               nextDue={nextDue}
               categories={categories}
+              freezeBank={freezeBank}
+              reminderEnabled={reminderEnabled}
+              reminderTime={reminderTime}
               onToggle={toggleBlock}
               onStartReview={startReview}
+              onStartToneDrill={startToneDrill}
+              onOpenStats={openStats}
+              onToggleReminder={toggleReminder}
+              onShiftReminderTime={shiftReminderTime}
             />
-          ) : (
+          )}
+          {view === "learn" && (
+            <PathScreen
+              completedLessons={completedLessons}
+              unlockedCount={total}
+              onStartLesson={startLesson}
+            />
+          )}
+          {view === "deck" && <DeckScreen deck={deck} />}
+          {view === "review" && (
             <ReviewScreen
               queue={reviewQueue}
               sessionDone={sessionDone}
               dueCount={dueCount}
+              nothingUnlocked={total === 0}
               audioFirst={audioFirst}
+              direction={direction}
               onToggleAudioFirst={toggleAudioFirst}
+              onToggleDirection={toggleDirection}
               onGrade={gradeCard}
               onStart={startReview}
               onReplayDone={finishSession}
+              onGoLearn={() => setView("learn")}
             />
           )}
         </View>
