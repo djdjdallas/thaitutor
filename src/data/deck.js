@@ -5,8 +5,16 @@
 import { SEED_DECK } from "./seedDeck";
 import { WORDS_100 } from "./words100";
 import { PHRASES_100 } from "./phrases100";
+import { SPEAK_LIKE_THAI } from "./speakLikeThai";
+import { DATING } from "./dating";
 
-export const FULL_DECK = [...SEED_DECK, ...WORDS_100, ...PHRASES_100].map((c, i) => ({
+export const FULL_DECK = [
+  ...SEED_DECK,
+  ...WORDS_100,
+  ...PHRASES_100,
+  ...SPEAK_LIKE_THAI,
+  ...DATING,
+].map((c, i) => ({
   ...c,
   sort: i,
 }));
