@@ -179,6 +179,57 @@ export const UNITS = [
       },
     ],
   },
+  {
+    id: "speaklikethai",
+    title: "Speak Like a Thai",
+    subtitle: "Particles, slang, and street Thai textbooks skip",
+    icon: "mic",
+    lessons: [
+      {
+        id: "stl1",
+        title: "Magic particles",
+        cardIds: ["st1", "st2", "st3", "st4", "st5", "st6", "st7"],
+      },
+      {
+        id: "stl2",
+        title: "Street contractions",
+        cardIds: ["st8", "st9", "st10", "st11", "st12", "st13", "st14"],
+      },
+      {
+        id: "stl3",
+        title: "Slang & reactions",
+        cardIds: ["st15", "st16", "st17", "st18", "st19", "st20", "st21"],
+      },
+      {
+        id: "stl4",
+        title: "Everyday street lines",
+        cardIds: ["st22", "st23", "st24", "st25", "st26", "st27"],
+      },
+    ],
+  },
+  {
+    id: "dating",
+    title: "Dating",
+    subtitle: "Compliments, dates, and sweet talk (for him)",
+    icon: "heart",
+    lessons: [
+      {
+        id: "dtl1",
+        title: "Breaking the ice",
+        cardIds: ["dt1", "dt2", "dt3", "dt4", "dt5", "dt6"],
+      },
+      {
+        id: "dtl2",
+        title: "Asking her out",
+        cardIds: ["p71", "dt7", "dt8", "dt9", "dt10", "dt11", "dt12"],
+      },
+      {
+        id: "dtl3",
+        title: "Sweet talk",
+        cardIds: ["dt13", "dt14", "dt15", "dt16", "dt17", "dt18", "dt19"],
+      },
+    ],
+  },
 ];
 
 // Flat list of every lesson, in path order, for sequencing and lookups.
